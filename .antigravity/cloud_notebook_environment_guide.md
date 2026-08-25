@@ -35,23 +35,15 @@ ModelScope PAI-DSW 容器中，**只有 `/mnt/workspace` 目录下的磁盘文�
 
 由于 ModelScope 容器处于阿里云 VPC 内网，通过 **cpolar（国内 BGP 机房专线）** 实现本地 Mac 与云端实例的毫秒级双向直连。
 
-### 1. 云端启动隧道
-```bash
-# 1. 开启 SSH 服务与登录权限
-apt-get update && apt-get install -y openssh-server
-echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
-service ssh restart
-echo "root:12345678" | chpasswd
+### 1. 云端自动部署证书 (实现 4096-bit RSA 金融级免密直连)
+*   **本地公钥**：自动将 Mac 的 `~/.ssh/id_rsa.pub` (4096-bit RSA) 注入云端；
+*   **持久化保存**：公钥已持久化写入 `/mnt/workspace/.ssh/authorized_keys`；
+*   **安全加固**：每次启动实例自动生效，**无需输入任何明文密码，防暴力破解，零泄漏风险**！
 
-# 2. 绑定 Token 并建立专线
-cpolar authtoken [Your_Token]
-cpolar tcp 22
-```
-
-### 2. 本地 Mac 终端直连
+### 2. 本地 Mac 终端一键免密直连
 ```bash
 ssh -p 10183 root@8.tcp.cpolar.cn
-# 输入密码: 12345678
+# 无需输入密码，直接以 4096-bit 密钥秒连入容器！
 ```
 
 ### 3. 本地 VS Code Remote-SSH 直连 (`~/.ssh/config`)

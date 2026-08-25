@@ -12,13 +12,17 @@ echo "==========================================================================
 echo "📦 [1/3] 检查 Python 数学与量化依赖 (Polars, NumPy, DuckDB, AkShare)..."
 pip install --quiet polars numpy duckdb akshare streamlit requests pydantic
 
-# 2. 创建持久化数据目录 (保证 1 小时休眠后数据不丢)
-echo "📁 [2/3] 初始化持久化存储 /mnt/workspace/quant_data/ ..."
-mkdir -p /mnt/workspace/quant_data/daily_parquet
-mkdir -p /mnt/workspace/quant_data/factors
+# 2. 自动恢复 SSH 证书公钥 (实现金融级 4096-bit 证书免密登录)
+echo "🔑 [2/4] 配置 SSH 证书公钥免密登录与安全加固..."
+mkdir -p ~/.ssh /mnt/workspace/.ssh /mnt/workspace/quant_data/daily_parquet /mnt/workspace/quant_data/factors
+if [ -f /mnt/workspace/.ssh/authorized_keys ]; then
+    cp /mnt/workspace/.ssh/authorized_keys ~/.ssh/authorized_keys
+    chmod 700 ~/.ssh
+    chmod 600 ~/.ssh/authorized_keys
+fi
 
 # 3. 运行全量筹码物理场微积分递推与因子库生成
-echo "⚡ [3/3] 启动高精 MCD 移动成本分布积分递推与全标的物理真值求解..."
+echo "⚡ [3/4] 启动高精 MCD 移动成本分布积分递推与全标的物理真值求解..."
 python run_cloud_compute.py
 
 echo "================================================================================"

@@ -15,7 +15,7 @@
     "BIAS_5_20": 5.4122,
     "order": "【脉冲诱多坚决清仓】",
     "status_title": "● 常规量化博弈态",
-    "calc_time_ms": 100.86
+    "calc_time_ms": 98.04
   },
   {
     "code": "300223",
@@ -33,7 +33,7 @@
     "BIAS_5_20": 5.712,
     "order": "【脉冲诱多坚决清仓】",
     "status_title": "● 常规量化博弈态",
-    "calc_time_ms": 25.87
+    "calc_time_ms": 54.09
   },
   {
     "code": "300322",
@@ -51,7 +51,7 @@
     "BIAS_5_20": 5.0157,
     "order": "【脉冲诱多坚决清仓】",
     "status_title": "● 常规量化博弈态",
-    "calc_time_ms": 19.26
+    "calc_time_ms": 263.52
   },
   {
     "code": "001309",
@@ -69,7 +69,7 @@
     "BIAS_5_20": 4.7867,
     "order": "【脉冲诱多坚决清仓】",
     "status_title": "● 常规量化博弈态",
-    "calc_time_ms": 20.16
+    "calc_time_ms": 60.19
   },
   {
     "code": "300655",
@@ -87,7 +87,7 @@
     "BIAS_5_20": 5.3021,
     "order": "【脉冲诱多坚决清仓】",
     "status_title": "● 常规量化博弈态",
-    "calc_time_ms": 19.78
+    "calc_time_ms": 57.54
   },
   {
     "code": "688525",
@@ -105,6 +105,6 @@
     "BIAS_5_20": 4.1981,
     "order": "【脉冲诱多坚决清仓】",
     "status_title": "● 常规量化博弈态",
-    "calc_time_ms": 21.23
+    "calc_time_ms": 84.48
   }
 ]
