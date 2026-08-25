@@ -1,49 +1,31 @@
-# 🛰️ 天眼全息智导 V7.0 (ModelScope Edition) · Antigravity 核心知识库
+# 🛰️ 天衍量化架构核心知识库 (.antigravity)
 
-本目录是 **Antigravity 自动化量化投研体系** 的核心大脑中枢与工程知识库，记录了指标数学释义、云端运行环境、全生命周期架构演进路线与动态 TODO 待办池。
-
----
-
-## 📚 知识库核心文档导航
-
-| 文档名称 | 核心内容与价值 | 对应文件路径 |
-| :--- | :--- | :--- |
-| **1. 五维量化指标完全法典** | 详尽记录 MCD 连续衰减微积分、五维物理特征、绝对战术铁律与三唯一军令定义 | [five_dimension_matrix_glossary.md](./five_dimension_matrix_glossary.md) |
-| **2. 云端 Notebook 运维与环境手册** | 记录 ModelScope PAI-DSW 实例配置、cpolar 专线穿透、1小时休眠防丢持久化与预算门神 | [cloud_notebook_environment_guide.md](./cloud_notebook_environment_guide.md) |
-| **3. 指标体系优化与进阶重构（重中之重）** | 融合 ModelScope 专家评审建议，针对高频订单流、非对称阻尼衰减、多周期协整等进行升级设计 | [metric_evolution_and_optimization.md](./metric_evolution_and_optimization.md) |
-| **4. 战略里程碑规划与动态 TODO 池** | 记录阶段性重大 Task 规划矩阵与随时追加的灵感、待办特性需求池（TODO Backlog） | [roadmap_tasks_and_todo.md](./roadmap_tasks_and_todo.md) |
+> 💡 **项目愿景**：基于**连续微积分物理场 (MCD)** 与 **ModelScope 开源大模型生态**，扬长避短，吸取各类顶尖金融模型精华，打造完全自主、自适应进化的专属量化大模型与全息选股雷达！
 
 ---
 
-## 🏛️ 系统架构总览图
+## 📚 知识库核心导航目录
+
+| 序号 | 核心文档 | 作用与核心定位 |
+| :---: | :--- | :--- |
+| **01** | [📜 **战略宣言与战术法典宪章 (`strategic_manifesto_and_tactical_charter.md`)**](file:///Users/woodman/dev/modelscope/.antigravity/strategic_manifesto_and_tactical_charter.md) | **最高战略法典**：代际继承令、核心量化哲学、自适应校准闭环、4 大升级路线与自研大模型愿景 |
+| **02** | [🔬 **五维指标优化与进阶重构方案 (`metric_evolution_and_optimization.md`)**](file:///Users/woodman/dev/modelscope/.antigravity/metric_evolution_and_optimization.md) | **重中之重**：非对称阻尼衰减、Level-2 主动买盘增强、多周期协整与三角交叉验证算法 |
+| **03** | [📐 **五维量化指标完全法典 (`five_dimension_matrix_glossary.md`)**](file:///Users/woodman/dev/modelscope/.antigravity/five_dimension_matrix_glossary.md) | **数学与物理底座**：MCD 连续积分方程、五大维度严密数学定义、198 日斐波那契时序与三唯一军令 |
+| **04** | [🗺️ **战略里程碑与动态 TODO 待办池 (`roadmap_tasks_and_todo.md`)**](file:///Users/woodman/dev/modelscope/.antigravity/roadmap_tasks_and_todo.md) | **工程路线图**：M1~M5 里程碑状态机、P0~P3 动态待办清单与随想灵感记事板 |
+| **05** | [☁️ **ModelScope Notebook 云端运维手册 (`cloud_notebook_environment_guide.md`)**](file:///Users/woodman/dev/modelscope/.antigravity/cloud_notebook_environment_guide.md) | **云端基建**：1.0P 分布式持久化 NAS、4096-bit RSA 免密登录、1800 次 API 预算门神与安全隔离 |
+
+---
+
+## 🏛️ 系统架构核心设计原则
 
 ```
-                      ┌────────────────────────────────────────────────────────┐  
-                      │              Antigravity 自动化控制中枢                │  
-                      │  (Prompt 编排 / Task 状态机 / 脚本生成 / Webhook 告警) │  
-                      └──────────────────────────┬─────────────────────────────┘  
-                                                 │  
-                        1. cpolar 国内专线 SSH 反向隧道 (10ms 超低延迟)  
-                                                 │  
-                                                 ▼  
-                      ┌────────────────────────────────────────────────────────┐  
-                      │            ModelScope Notebook 云端实例 (/mnt)         │  
-                      │                                                        │  
-                      │  ┌──────────────────────────────────────────────────┐  │  
-                      │  │  阶段一：全市场 5115 只 A 股 MCD 筹码物理场引擎  │  │  
-                      │  │  (Z / ASR / X90 / LFS / CYS34 / BIAS / DuckDB)   │  │  
-                      │  └────────────────────────┬─────────────────────────┘  │  
-                      │                           │ 结构化因子矩阵              │  
-                      │                           ▼                            │  
-                      │  ┌──────────────────────────────────────────────────┐  │  
-                      │  │  阶段二：ModelScope 免费大模型网关与 SFT 微调   │  │  
-                      │  │  (MiniMax-M1 / Qwen3-235B / 1800次预算硬锁门神)  │  │  
-                      │  └────────────────────────┬─────────────────────────┘  │  
-                      │                           │ 战术推理输出                │  
-                      │                           ▼                            │  
-                      │  ┌──────────────────────────────────────────────────┐  │  
-                      │  │  阶段三：硬规则前置防御与三唯一状态机实盘裁决    │  │  
-                      │  │  (底座护城河一票否决 / 仓位分层管理 / 告警推送)  │  │  
-                      │  └──────────────────────────────────────────────────┘  │  
-                      └────────────────────────────────────────────────────────┘
+                   ┌────────────────────────────────────────────────────────┐
+                   │               天衍五维量化闭环系统架构                 │
+                   └──────────────────────────┬─────────────────────────────┘
+                                              │
+         ┌────────────────────────────────────┼────────────────────────────────────┐
+         ▼                                    ▼                                    ▼
+【第一层：物理真值微积分层】           【第二层：自适应三角验证层】           【第三层：专属金融大模型决策层】
+• NumPy/Polars 连续空间积分            • 指南针 vs 自研微积分 vs 真实走势     • ModelScope GPU 私有化微调 (LoRA)
+• 0.01s 求解 Z/ASR/LFS/X90/CYS34       • 动态修正阻尼 α 与信号置信度          • 结合基本面与时序下发三唯一军令
 ```
