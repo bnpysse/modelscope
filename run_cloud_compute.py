@@ -38,15 +38,35 @@ import polars as pl
 from core.quant_chip_engine import chip_engine
 from core.ai_advisor import evaluate_local_tactical_status
 
-# 核心战略资产监控池
-TARGET_POOL = [
-    {"code": "300475", "name": "香农芯创", "sector": "HBM存储分销+先进封测"},
-    {"code": "300223", "name": "北京君正", "sector": "车规工控DRAM自研存算"},
-    {"code": "300322", "name": "硕贝德",   "sector": "天线射频·死锁资产"},
-    {"code": "001309", "name": "德明利",   "sector": "企业级存储主控模组"},
-    {"code": "300655", "name": "晶瑞电材", "sector": "半导体光刻胶与湿电子化学品"},
-    {"code": "688525", "name": "佰维存储", "sector": "嵌入式存储与封测龙头"},
-]
+def get_all_target_pool() -> list[dict]:
+    """动态获取全部监控标的池 (结合核心资产与 stock.csv 底座)"""
+    pool = [
+        {"code": "300475", "name": "香农芯创", "sector": "HBM存储分销+先进封测"},
+        {"code": "300223", "name": "北京君正", "sector": "车规工控DRAM自研存算"},
+        {"code": "300322", "name": "硕贝德",   "sector": "天线射频·死锁资产"},
+        {"code": "001309", "name": "德明利",   "sector": "企业级存储主控模组"},
+        {"code": "300655", "name": "晶瑞电材", "sector": "半导体光刻胶与湿电子化学品"},
+        {"code": "688525", "name": "佰维存储", "sector": "嵌入式存储与封测龙头"},
+    ]
+    seen = {item["code"] for item in pool}
+    
+    local_csv = ROOT_DIR / "data" / "stock.csv"
+    if local_csv.exists():
+        try:
+            df = pl.read_csv(local_csv, infer_schema_length=2000)
+            code_col = "Target_Code" if "Target_Code" in df.columns else "Code"
+            name_col = "Target_Name" if "Target_Name" in df.columns else "Name"
+            
+            rows = df.select([code_col, name_col]).unique().to_dicts()
+            for r in rows:
+                c = str(r[code_col]).replace(".0", "").zfill(6)
+                n = str(r.get(name_col, c))
+                if c not in seen:
+                    pool.append({"code": c, "name": n, "sector": "核心观察标的"})
+                    seen.add(c)
+        except Exception:
+            pass
+    return pool
 
 
 def fetch_or_load_stock_history(code: str, force_refresh: bool = False) -> pl.DataFrame:
@@ -100,7 +120,9 @@ def run_full_market_math_pipeline():
     summary_records = []
     t_start = time.time()
 
-    for item in TARGET_POOL:
+    targets = get_all_target_pool()
+    print(f"📊 监控标的池总量: {len(targets)} 只标的")
+    for item in targets:
         code = item["code"]
         name = item["name"]
         sector = item["sector"]
