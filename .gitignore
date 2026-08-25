@@ -1,0 +1,44 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+ENV/
+
+# Sensitive environment variables & API credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.token
+
+# Google / OAuth / Service Account Secrets
+*client_secret*.json
+*service_account*.json
+token.json
+obsidian_bot/client_secret.json
+obsidian_bot/service_account.json
+obsidian_bot/token.json
+obsidian_bot/.env
+
+# SQLite Databases & temporary logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Cache & scratch
+.pytest_cache/
+.coverage
+htmlcov/
