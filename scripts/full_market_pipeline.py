@@ -84,6 +84,12 @@ def step1_download_all_a_shares(stock_list: List[dict], start_date: str = "2023-
     fail_cnt = 0
     t0 = time.time()
 
+    str_schema = [
+        ("Date", pl.Utf8), ("Code", pl.Utf8),
+        ("Open", pl.Utf8), ("High", pl.Utf8), ("Low", pl.Utf8), ("Close", pl.Utf8),
+        ("Volume", pl.Utf8), ("Amount", pl.Utf8), ("Turnover", pl.Utf8), ("Pct_Chg", pl.Utf8)
+    ]
+
     try:
         for idx, item in enumerate(tqdm(stock_list, desc="1.日线采集进度", unit="股")):
             bs_code = item["bs_code"]
@@ -110,11 +116,23 @@ def step1_download_all_a_shares(stock_list: List[dict], start_date: str = "2023-
                 fail_cnt += 1
                 continue
 
-            df = pl.DataFrame(data, orient="row", schema=[
-                ("Date", pl.Utf8), ("Code", pl.Utf8),
-                ("Open", pl.Float64), ("High", pl.Float64), ("Low", pl.Float64), ("Close", pl.Float64),
-                ("Volume", pl.Float64), ("Amount", pl.Float64), ("Turnover", pl.Float64), ("Pct_Chg", pl.Float64)
-            ])
+            # 统一解析并安全清洗空字符串
+            raw_df = pl.DataFrame(data, orient="row", schema=str_schema)
+            df = raw_df.with_columns([
+                pl.col("Open").replace("", None).cast(pl.Float64, strict=False),
+                pl.col("High").replace("", None).cast(pl.Float64, strict=False),
+                pl.col("Low").replace("", None).cast(pl.Float64, strict=False),
+                pl.col("Close").replace("", None).cast(pl.Float64, strict=False),
+                pl.col("Volume").replace("", None).cast(pl.Float64, strict=False),
+                pl.col("Amount").replace("", None).cast(pl.Float64, strict=False),
+                pl.col("Turnover").replace("", None).cast(pl.Float64, strict=False),
+                pl.col("Pct_Chg").replace("", None).cast(pl.Float64, strict=False),
+            ]).drop_nulls(subset=["Close", "Turnover"])
+
+            if df.is_empty() or len(df) < 5:
+                fail_cnt += 1
+                continue
+
             df.write_parquet(save_path, compression="zstd")
             success_cnt += 1
     finally:
@@ -221,7 +239,7 @@ if __name__ == "__main__":
     stocks = get_all_a_share_symbols()
     print(f"✅ 全市场 A 股目录拉取成功，共计 {len(stocks)} 只有效标的！")
     
-    # 默认全量流水线执行 (先执行前 500 只或全量)
+    # 默认全量流水线执行 (可指定 limit 进行分批)
     limit = int(sys.argv[1]) if len(sys.argv) > 1 else 0
     step1_download_all_a_shares(stocks, max_count=limit)
     step2_compute_all_factors()
