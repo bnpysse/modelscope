@@ -11,34 +11,163 @@ from typing import Optional, Tuple
 
 
 @dataclass(frozen=True)
-class ZoneVerdict:
-    """战区定性结果"""
-    zone_code: str    # S / A / B / C
-    zone_label: str   # 中文描述
-    color: str        # 主题色
-    command: str      # 战术裁决
-
-
-@dataclass(frozen=True)
-class PositionTierVerdict:
-    """4 级动态仓位分层裁决"""
-    tier_code: str          # FULL_LOCK / DEFENSE_TRIM / REVERSE_HEDGE / HARD_STOP
-    tier_label: str         # 中文军令
-    target_pos_pct: int     # 建议仓位 (100 / 50 / 30 / 0)
-    color: str              # 徽章主题色
-    rationale: str          # 核心判定逻辑
-    action_guidance: str    # 具体实战操作指令
-
-
-@dataclass(frozen=True)
-class MomentumTier:
-    """动能等级 (维一专用)"""
-    tier_label: str
-    tier_color: str
+class HighOrderMetricsVerdict:
+    """六大高阶衍生量化指标与状态诊断"""
+    cpr: float                  # 筹码刚性度 / 锁仓势能比
+    cpr_status: str             # 【超导死锁态】 / 【良性蓄势态】 / 【筹码溃散态】
+    cpr_color: str
+    eta_v: float                # 真空推升能效比 / 超导拉升因子
+    eta_v_status: str           # 【高能真空跃迁】 / 【良性推升】 / 【天量磨损滞涨】
+    eta_v_color: str
+    bri: float                  # 双峰撕裂与断层真空指数
+    bri_status: str             # 【绝对哑铃真空走廊】 / 【突破走廊】 / 【筹码散乱崩塌】
+    bri_color: str
+    kappa_cyc: float            # 斐波那契成本均线张力收敛度 (%)
+    kappa_cyc_status: str       # 【奇点爆发区 (Big Bang)】 / 【良性发散】 / 【均线过度发散】
+    kappa_cyc_color: str
+    delta_cys: float            # 多尺度市场盈亏剪刀差 (CYS13 - CYS34)
+    delta_cys_status: str       # 【多头攻击加速】 / 【黄金坑反转点火】 / 【震荡调整】
+    delta_cys_color: str
+    smpi: float                 # 主力筹码纯度 / 游资杂音滤镜
+    smpi_status: str            # 【机构高纯度扫盘】 / 【空中加油】 / 【游资倒沫子预警】
+    smpi_color: str
+    three_command: str          # 【继续锁仓装死】 / 【脉冲诱多坚决清仓】 / 【反向T+0对冲】
+    command_color: str
+    position_rule: str          # 仓位控制铁律 (80% 上限 + 20% 现金对冲盾)
 
 
 class SignalJudge:
     """纯逻辑信号判定器，前端无关"""
+
+    @staticmethod
+    def calculate_high_order_metrics(
+        lfs: float,
+        hccyf: float,
+        asr: float,
+        turnover: float,
+        delta_p_pct: float,
+        x70: float,
+        y_overlap: float,
+        z_profit: float,
+        cyc5: float,
+        cyc13: float,
+        cyc34: float,
+        cyc_inf: float,
+        cys13: float,
+        cys34: float,
+        bias_5_20: float,
+        main_pct: float = 5.0,
+        dare_pct: float = 1.0,
+        d_pos: float = 35.0,
+    ) -> HighOrderMetricsVerdict:
+        """
+        六大高阶衍生量化指标与张量模型计算：
+        1. CPR (筹码刚性度)
+        2. ηV (真空推升能效比)
+        3. BRI (双峰撕裂真空走廊指数)
+        4. κCYC (斐波那契均线张力收敛度)
+        5. ΔCYS (多尺度盈亏剪刀差)
+        6. SMPI (主力筹码纯度)
+        """
+        # 1. CPR 筹码刚性度
+        to_norm = max(turnover / 100.0 if turnover > 1.0 else turnover, 0.001)
+        asr_clean = max(asr, 0.5)
+        cpr = (lfs * hccyf) / (asr_clean * (1.0 + to_norm) + 1e-4)
+        if cpr >= 25.0:
+            cpr_status, cpr_color = "【超导死锁态】", "#FFD700"
+        elif cpr >= 10.0:
+            cpr_status, cpr_color = "【良性蓄势态】", "#10B981"
+        else:
+            cpr_status, cpr_color = "【筹码溃散态】", "#EF4444"
+
+        # 2. ηV 真空推升能效比
+        to_val = max(turnover if turnover > 1.0 else turnover * 100.0, 0.1)
+        eta_v = (delta_p_pct * 100.0) / (to_val * asr_clean + 1e-4)
+        if eta_v >= 0.05:
+            eta_v_status, eta_v_color = "【高能真空跃迁】", "#FFD700"
+        elif eta_v >= 0.02:
+            eta_v_status, eta_v_color = "【良性推升】", "#10B981"
+        else:
+            eta_v_status, eta_v_color = "【天量磨损滞涨】", "#EF4444"
+
+        # 3. BRI 双峰撕裂与断层真空指数
+        x70_clean = max(x70, 0.5)
+        y_clean = min(max(y_overlap, 0.0), 99.0)
+        bri = ((100.0 - y_clean) * z_profit) / (x70_clean * asr_clean + 1e-4)
+        if bri >= 50.0:
+            bri_status, bri_color = "【绝对哑铃真空走廊】", "#FFD700"
+        elif bri >= 25.0:
+            bri_status, bri_color = "【突破走廊】", "#10B981"
+        else:
+            bri_status, bri_color = "【筹码散乱崩塌】", "#EF4444"
+
+        # 4. κCYC 斐波那契成本均线张力收敛度
+        cyc_ref = max(cyc_inf, 1.0)
+        c_max = max(cyc5, cyc13, cyc34)
+        c_min = min(cyc5, cyc13, cyc34)
+        kappa_cyc = ((c_max - c_min) / cyc_ref) * 100.0
+        if kappa_cyc <= 2.0:
+            kappa_cyc_status, kappa_cyc_color = "【奇点爆发区 (Big Bang)】", "#FFD700"
+        elif kappa_cyc <= 10.0:
+            kappa_cyc_status, kappa_cyc_color = "【良性发散排列】", "#10B981"
+        else:
+            kappa_cyc_status, kappa_cyc_color = "【均线过度发散】", "#F59E0B"
+
+        # 5. ΔCYS 多尺度市场盈亏剪刀差
+        delta_cys = cys13 - cys34
+        if cys34 < -15.0 and delta_cys > 0:
+            delta_cys_status, delta_cys_color = "【黄金坑反转点火】", "#FFD700"
+        elif delta_cys > 0:
+            delta_cys_status, delta_cys_color = "【多头攻击加速】", "#10B981"
+        else:
+            delta_cys_status, delta_cys_color = "【震荡休整】", "#6B7280"
+
+        # 6. SMPI 主力筹码纯度 / 游资杂音滤镜
+        smpi = ((main_pct - dare_pct) / (to_val + 1e-4)) * (1.0 - min(d_pos, 99.0) / 100.0)
+        if smpi > 1.5:
+            smpi_status, smpi_color = "【机构高纯度扫盘】", "#FFD700"
+        elif smpi >= 0:
+            smpi_status, smpi_color = "【空中加油】", "#10B981"
+        else:
+            smpi_status, smpi_color = "【游资倒沫子预警】", "#EF4444"
+
+        # 终极三唯一裁决状态机与仓位控制
+        if (hccyf > lfs and asr > 35.0) or (d_pos > 70.0 and smpi < 0):
+            three_command = "【脉冲诱多坚决清仓】"
+            command_color = "#EF4444"
+            position_rule = "触发清仓一票否决：全线清仓 (0%)，防范断崖式破位。"
+        elif bias_5_20 > 15.0 or (eta_v < 0.015 and to_val > 10.0):
+            three_command = "【反向T+0对冲】"
+            command_color = "#F59E0B"
+            position_rule = "战略底仓 (50%-70%) 锁定，浮动仓 (20%-40%) 冲高减仓对冲降本。"
+        else:
+            three_command = "【继续锁仓装死】"
+            command_color = "#FFD700"
+            position_rule = "总仓位上限 <=80% (20% 现金对冲盾)，战略底仓满配，无视日内杂波！"
+
+        return HighOrderMetricsVerdict(
+            cpr=round(cpr, 2),
+            cpr_status=cpr_status,
+            cpr_color=cpr_color,
+            eta_v=round(eta_v, 4),
+            eta_v_status=eta_v_status,
+            eta_v_color=eta_v_color,
+            bri=round(bri, 2),
+            bri_status=bri_status,
+            bri_color=bri_color,
+            kappa_cyc=round(kappa_cyc, 2),
+            kappa_cyc_status=kappa_cyc_status,
+            kappa_cyc_color=kappa_cyc_color,
+            delta_cys=round(delta_cys, 2),
+            delta_cys_status=delta_cys_status,
+            delta_cys_color=delta_cys_color,
+            smpi=round(smpi, 2),
+            smpi_status=smpi_status,
+            smpi_color=smpi_color,
+            three_command=three_command,
+            command_color=command_color,
+            position_rule=position_rule
+        )
 
     @staticmethod
     def judge_position_tier(
@@ -59,7 +188,6 @@ class SignalJudge:
         3. 【防线预警·分批减仓】(50%): 单峰松动 (X90 > 22%) 且 动能衰减 (Slope3 < 0)
         4. 【满配主升·绝对锁仓】(100%): 底座金叉 (LFS >= HCCYF13) 且 乖离合理
         """
-        # 1. 触发清仓一票否决
         if (hccyf > lfs and slope_3d < -1.5) or is_wash_trading_dump:
             return PositionTierVerdict(
                 tier_code="HARD_STOP",
@@ -70,7 +198,6 @@ class SignalJudge:
                 action_guidance="无条件 100% 清仓一票否决，保全本金，杜绝侥幸抄底。"
             )
 
-        # 2. 触发短线超买反向做 T
         if bias_5_20 > 15.0:
             return PositionTierVerdict(
                 tier_code="REVERSE_HEDGE",
@@ -81,7 +208,6 @@ class SignalJudge:
                 action_guidance="保留底仓，卖出 30%~50% 浮盈仓位反向做T，待回踩 5日均线接回降低持仓成本。"
             )
 
-        # 3. 触发防线松动减仓防守
         if (x90 > 22.0 and slope_3d < 0) or (lfs < hccyf and slope_3d >= -1.5):
             return PositionTierVerdict(
                 tier_code="DEFENSE_TRIM",
@@ -92,7 +218,6 @@ class SignalJudge:
                 action_guidance="主动收缩战线，仓位降至 50% 防守，设立保护性止损点。"
             )
 
-        # 4. 满配主升绝对锁仓
         return PositionTierVerdict(
             tier_code="FULL_LOCK",
             tier_label="【满配主升·绝对锁仓】",
@@ -104,14 +229,6 @@ class SignalJudge:
 
     @staticmethod
     def judge_zone(scissor: float, slope_3d: float) -> ZoneVerdict:
-        """
-        基于剪刀差和3日斜率判定战区等级。
-
-        S档 (Scissor > 20)：绝对护城河
-        A档 (Scissor > 0, 斜率 > 0)：常规博弈
-        B档 (Scissor > 0, 斜率 ≤ 0)：防线松动
-        C档 (Scissor ≤ 0)：极寒死叉
-        """
         if scissor > 20:
             return ZoneVerdict(
                 zone_code="S",
@@ -144,7 +261,6 @@ class SignalJudge:
 
     @staticmethod
     def judge_momentum(slope_3d: float) -> MomentumTier:
-        """维一动能等级判定 (VMA 3日斜率)"""
         if slope_3d > 2.0:
             return MomentumTier("★ 点火级 (绝对主升)", "#FFD700")
         elif slope_3d > 0:
@@ -156,7 +272,6 @@ class SignalJudge:
 
     @staticmethod
     def judge_z_quality(z_prime: float, turnover: float) -> str:
-        """Z' 动能质量判定"""
         if z_prime > 10 and turnover < 5.0:
             return "极品无量穿透"
         elif z_prime > 10:
@@ -168,7 +283,6 @@ class SignalJudge:
 
     @staticmethod
     def judge_fund_momentum(delta_sum_22d: float) -> tuple[str, str]:
-        """月线资金势能判定 → (描述, 颜色)"""
         if delta_sum_22d > 1.0:
             return ("月线势能加速流入", "#EF4444")
         elif delta_sum_22d < -1.0:
@@ -178,10 +292,10 @@ class SignalJudge:
 
     @staticmethod
     def get_z_bar_color(z_prime: float, turnover: float) -> str:
-        """Z' 柱状图着色逻辑"""
         if z_prime > 10 and turnover < 5.0:
             return "#FFFFFF"   # 极品无量：白色
         elif z_prime > 0:
             return "#FFD700"   # 正向：金色
         else:
             return "#10B981"   # 负向：绿色
+

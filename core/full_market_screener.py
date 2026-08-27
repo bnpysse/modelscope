@@ -128,11 +128,37 @@ class DuckDBMarketScreener:
         WHERE rn = 1
           AND LFS >= HCCYF13
           AND Slope3_LFS >= 0.0
-          AND X90 < 25.0
-        ORDER BY LFS DESC;
+    def scan_cpr_superconductor(self) -> pl.DataFrame:
+        """
+        战术初筛 4：【超导死锁态与真空跃迁真龙榜 (CPR & BRI 高阶张量)】
+        条件：CPR (筹码刚性度) >= 20.0 且 BRI (断层真空指数) >= 30.0 且 LFS 护城河完好
+        """
+        parquet_glob = self._get_target_parquet_glob()
+        sql = f"""
+        WITH latest_rows AS (
+            SELECT *, 
+                   regexp_extract(filename, '([0-9]{{6}})', 1) as clean_code,
+                   ROW_NUMBER() OVER(PARTITION BY regexp_extract(filename, '([0-9]{{6}})', 1) ORDER BY Date DESC) as rn
+            FROM read_parquet('{parquet_glob}', filename=true, union_by_name=true)
+        )
+        SELECT 
+            clean_code as code, 
+            Date as date,
+            ROUND(Close, 2) as close, 
+            ROUND((LFS * HCCYF13) / (GREATEST(ASR, 0.5) * (1.0 + GREATEST(Turnover, 0.5)/100.0) + 0.001), 2) as CPR,
+            ROUND(((100.0 - LEAST(COALESCE(Overlap_Y, 20.0), 99.0)) * Z_Profit) / (GREATEST(X70, 0.5) * GREATEST(ASR, 0.5) + 0.001), 2) as BRI,
+            ROUND(LFS, 2) as LFS,
+            ROUND(ASR, 2) as ASR,
+            ROUND(Z_Profit, 2) as Z_pct,
+            ROUND(X70, 2) as X70_pct
+        FROM latest_rows
+        WHERE rn = 1
+          AND LFS >= HCCYF13 * 0.8
+        ORDER BY CPR DESC;
         """
         return self.con.execute(sql).pl()
 
 
 # 全局单例
 screener = DuckDBMarketScreener()
+

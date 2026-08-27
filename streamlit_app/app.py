@@ -265,11 +265,25 @@ with st.expander("⚙️ 自选股票池与多分组管理 (自主新建分组 /
                 st.rerun()
 
 # ==========================================
+# ==========================================
 # 3. DuckDB 全市场五维筹码毫秒级战术初筛雷达榜 (移至上部，方便全市场选股)
 # ==========================================
-with st.expander("🔍 DuckDB 全市场五维筹码毫秒级初筛雷达榜 (真空走廊 / 黄金坑 / 主升浪 · 一键建池)", expanded=False):
-    tab1, tab2, tab3 = st.tabs(["🌟 物理真空走廊 + 极度单峰", "💎 战略黄金坑逆向超卖", "👑 超级主升浪筹码多头金叉"])
+with st.expander("🔍 DuckDB 全市场五维筹码毫秒级初筛雷达榜 (超导死锁 / 真空走廊 / 黄金坑 / 主升浪 · 一键建池)", expanded=False):
+    tab0, tab1, tab2, tab3 = st.tabs(["⚡ 超导死锁与真空跃迁 (CPR/BRI)", "🌟 物理真空走廊 + 极度单峰", "💎 战略黄金坑逆向超卖", "👑 超级主升浪筹码多头金叉"])
     
+    with tab0:
+        try:
+            cpr_df = screener.scan_cpr_superconductor()
+            st.dataframe(cpr_df.to_pandas(), use_container_width=True, hide_index=True)
+            if st.button("📥 一键将【超导真龙 Top 15】加入「⚡ 超导死锁真空跃迁池」", key="import_cpr"):
+                records = cpr_df.select(["code"]).to_dicts()
+                engine.create_custom_group("⚡ 超导死锁真空跃迁池")
+                engine.add_stocks_to_group("⚡ 超导死锁真空跃迁池", records)
+                st.success("✅ 超导真龙标的已全部自动同步至「⚡ 超导死锁真空跃迁池」！")
+                st.rerun()
+        except Exception as e:
+            st.info(f"全市场初筛载入中: {e}")
+
     with tab1:
         try:
             vac_df = screener.scan_vacuum_corridor()
@@ -327,22 +341,80 @@ local_eval = evaluate_local_tactical_status(snapshot)
 micro_order = level2_engine.get_micro_features_safely(sel_code, snapshot)
 consensus = report_engine.get_stock_broker_consensus(sel_code, current_price=float(snapshot.get("Close", 10.0)))
 
+# 核心六大高阶衍生量化张量计算 (CPR / ηV / BRI / κCYC / ΔCYS / SMPI)
+high_order = SignalJudge.calculate_high_order_metrics(
+    lfs=float(snapshot.get("LFS", 50.0)),
+    hccyf=float(snapshot.get("HCCYF13", 50.0)),
+    asr=float(snapshot.get("ASR", 20.0)),
+    turnover=float(snapshot.get("Turnover", 2.0)),
+    delta_p_pct=float(snapshot.get("Pct_Change", 2.0)) / 100.0 if "Pct_Change" in snapshot else 0.02,
+    x70=float(snapshot.get("X70", 15.0)),
+    y_overlap=float(snapshot.get("Overlap_Y", 20.0)),
+    z_profit=float(snapshot.get("Z_Profit", 50.0)),
+    cyc5=float(snapshot.get("CYC5", snapshot.get("Close", 10.0))),
+    cyc13=float(snapshot.get("CYC13", snapshot.get("Close", 10.0))),
+    cyc34=float(snapshot.get("CYC34", snapshot.get("Close", 10.0))),
+    cyc_inf=float(snapshot.get("CYC_inf", snapshot.get("Close", 10.0))),
+    cys13=float(snapshot.get("CYS13", 0.0)),
+    cys34=float(snapshot.get("CYS34", 0.0)),
+    bias_5_20=float(snapshot.get("BIAS_5_20", 0.0)),
+    main_pct=float(snapshot.get("Main_Fund_Pct", 5.0)),
+    dare_pct=float(snapshot.get("Dare_Fund_Pct", 1.0)),
+    d_pos=float(snapshot.get("D_Pos", 35.0))
+)
+
 # ==========================================
-# 4. 指标分析类核心内容 (战术军令条 + 五维指标穿透卡片 + 斐波那契矩阵 + AI参谋部)
+# 4. 指标分析类核心内容 (战术军令条 + 六大高阶指标 + 五维指标穿透卡片 + 斐波那契矩阵 + AI参谋部)
 # ==========================================
 res_color = "#FFD700" if local_eval.get("resonance_score", 50) >= 80 else "#10B981"
 st.markdown(f"""
 <div class="tactical-bar">
     <div>
-        <span class="pos-tag" style="background:{local_eval['badge_color']}22; color:{local_eval['badge_color']}; border:1px solid {local_eval['badge_color']};">
-            {local_eval['order']} · 建议仓位 {local_eval['target_position_pct']}%
+        <span class="pos-tag" style="background:{high_order.command_color}22; color:{high_order.command_color}; border:1px solid {high_order.command_color}; font-size:11px;">
+            {high_order.three_command}
         </span>
-        <span style="margin-left:8px; color:#94A3B8;">{local_eval['status_title']}</span>
+        <span style="margin-left:8px; color:#E2E8F0; font-size:10.5px;">{high_order.position_rule}</span>
     </div>
-    <div style="display:flex; gap:12px; font-family:monospace;">
+    <div style="display:flex; gap:12px; font-family:monospace; font-size:10.5px;">
         <span>跨周期共振: <b style="color:{res_color};">{snapshot.get('Resonance_Score', 50):.1f}</b></span>
         <span>Norm_BIAS: <b style="color:#E5E7EB;">{snapshot.get('Norm_BIAS_5_20', 0):.2f}</b></span>
-        <span>微观推升效率: <b style="color:#10B981;">{micro_order.get('eta_micro_thrust', 0):+.2f}</b> (ABR: {micro_order.get('active_buy_ratio_%', 50):.1f}%)</span>
+        <span>微观推升: <b style="color:#10B981;">{micro_order.get('eta_micro_thrust', 0):+.2f}</b></span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# 渲染六大高阶衍生量化指标 (CPR / ηV / BRI / κCYC / ΔCYS / SMPI)
+st.markdown(f"""
+<div class="high-order-grid" style="display:grid; grid-template-columns:repeat(6, 1fr); gap:6px; margin:2px 0 5px 0;">
+    <div class="metric-card" style="padding:4px 6px;">
+        <div class="metric-card-title">① 筹码刚性度 (CPR)</div>
+        <div class="metric-card-value" style="color:{high_order.cpr_color}; font-size:12.5px;">{high_order.cpr:.2f}</div>
+        <div class="metric-card-sub" style="color:{high_order.cpr_color}; font-size:9.5px;">{high_order.cpr_status}</div>
+    </div>
+    <div class="metric-card" style="padding:4px 6px;">
+        <div class="metric-card-title">② 真空推升能效比 (ηV)</div>
+        <div class="metric-card-value" style="color:{high_order.eta_v_color}; font-size:12.5px;">{high_order.eta_v:.4f}</div>
+        <div class="metric-card-sub" style="color:{high_order.eta_v_color}; font-size:9.5px;">{high_order.eta_v_status}</div>
+    </div>
+    <div class="metric-card" style="padding:4px 6px;">
+        <div class="metric-card-title">③ 断层真空指数 (BRI)</div>
+        <div class="metric-card-value" style="color:{high_order.bri_color}; font-size:12.5px;">{high_order.bri:.2f}</div>
+        <div class="metric-card-sub" style="color:{high_order.bri_color}; font-size:9.5px;">{high_order.bri_status}</div>
+    </div>
+    <div class="metric-card" style="padding:4px 6px;">
+        <div class="metric-card-title">④ 均线张力收敛 (κCYC)</div>
+        <div class="metric-card-value" style="color:{high_order.kappa_cyc_color}; font-size:12.5px;">{high_order.kappa_cyc:.2f}%</div>
+        <div class="metric-card-sub" style="color:{high_order.kappa_cyc_color}; font-size:9.5px;">{high_order.kappa_cyc_status}</div>
+    </div>
+    <div class="metric-card" style="padding:4px 6px;">
+        <div class="metric-card-title">⑤ 盈亏剪刀差 (ΔCYS)</div>
+        <div class="metric-card-value" style="color:{high_order.delta_cys_color}; font-size:12.5px;">{high_order.delta_cys:+.2f}%</div>
+        <div class="metric-card-sub" style="color:{high_order.delta_cys_color}; font-size:9.5px;">{high_order.delta_cys_status}</div>
+    </div>
+    <div class="metric-card" style="padding:4px 6px;">
+        <div class="metric-card-title">⑥ 主力筹码纯度 (SMPI)</div>
+        <div class="metric-card-value" style="color:{high_order.smpi_color}; font-size:12.5px;">{high_order.smpi:+.2f}</div>
+        <div class="metric-card-sub" style="color:{high_order.smpi_color}; font-size:9.5px;">{high_order.smpi_status}</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -383,6 +455,7 @@ st.markdown(f"""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
 
 # 斐波那契战略纵深矩阵
 with st.expander("📊 198 交易日斐波那契战略纵深矩阵 (5, 13, 34, 55, 89, 144, 198)", expanded=False):
