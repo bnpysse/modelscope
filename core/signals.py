@@ -11,6 +11,33 @@ from typing import Optional, Tuple
 
 
 @dataclass(frozen=True)
+class ZoneVerdict:
+    """战区定性结果"""
+    zone_code: str    # S / A / B / C
+    zone_label: str   # 中文描述
+    color: str        # 主题色
+    command: str      # 战术裁决
+
+
+@dataclass(frozen=True)
+class PositionTierVerdict:
+    """4 级动态仓位分层裁决"""
+    tier_code: str          # FULL_LOCK / DEFENSE_TRIM / REVERSE_HEDGE / HARD_STOP
+    tier_label: str         # 中文军令
+    target_pos_pct: int     # 建议仓位 (100 / 50 / 30 / 0)
+    color: str              # 徽章主题色
+    rationale: str          # 核心判定逻辑
+    action_guidance: str    # 具体实战操作指令
+
+
+@dataclass(frozen=True)
+class MomentumTier:
+    """动能等级 (维一专用)"""
+    tier_label: str
+    tier_color: str
+
+
+@dataclass(frozen=True)
 class HighOrderMetricsVerdict:
     """六大高阶衍生量化指标与状态诊断"""
     cpr: float                  # 筹码刚性度 / 锁仓势能比
@@ -34,6 +61,7 @@ class HighOrderMetricsVerdict:
     three_command: str          # 【继续锁仓装死】 / 【脉冲诱多坚决清仓】 / 【反向T+0对冲】
     command_color: str
     position_rule: str          # 仓位控制铁律 (80% 上限 + 20% 现金对冲盾)
+
 
 
 class SignalJudge:

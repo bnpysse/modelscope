@@ -125,13 +125,17 @@ class DuckDBMarketScreener:
             ROUND(X90, 2) as X90_pct,
             ROUND(Z_Profit, 2) as Z_pct
         FROM latest_rows
-        WHERE rn = 1
           AND LFS >= HCCYF13
           AND Slope3_LFS >= 0.0
+          AND X90 < 25.0
+        ORDER BY LFS DESC;
+        """
+        return self.con.execute(sql).pl()
+
     def scan_cpr_superconductor(self) -> pl.DataFrame:
         """
-        战术初筛 4：【超导死锁态与真空跃迁真龙榜 (CPR & BRI 高阶张量)】
-        条件：CPR (筹码刚性度) >= 20.0 且 BRI (断层真空指数) >= 30.0 且 LFS 护城河完好
+        战术初筛 4: 【超导死锁态与真空跃迁真龙榜 (CPR & BRI 高阶张量)】
+        条件: CPR (筹码刚性度) >= 20.0 且 BRI (断层真空指数) >= 30.0 且 LFS 护城河完好
         """
         parquet_glob = self._get_target_parquet_glob()
         sql = f"""
