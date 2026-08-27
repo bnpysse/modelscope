@@ -470,6 +470,34 @@ with st.expander("📊 198 交易日斐波那契战略纵深矩阵 (5, 13, 34, 5
         fib_df = pd.DataFrame(fib_matrix)
         st.dataframe(fib_df, use_container_width=True, hide_index=True)
 
+# 连续微积分数学物理底座教义 (Mathematical Physics Engine)
+with st.expander("🔬 天衍数理底座 · 连续微积分时空场与筹码守恒反解方程", expanded=False):
+    st.markdown("""
+    <div style="font-size:11.5px; color:#94A3B8; margin-bottom:8px; line-height:1.5;">
+        本系统彻底摒弃传统商业软件的离散切片与简陋等腰三角假设，采用<b>连续时空偏微分方程</b>与<b>筹码质心质量守恒律</b>，实现全天候无噪反解与机构拆单穿透。
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_p1, col_p2 = st.columns(2, gap="medium")
+    with col_p1:
+        st.markdown("**① 主力增仓与拆单穿透反解方程 (Main% Inversion)**")
+        st.latex(r"Main\%_{\text{物理反解}} = \alpha \cdot \frac{\partial LFS}{\partial t} + \beta \cdot \text{Turnover} \cdot \left( \frac{\text{Close} - \text{VWAP}}{\text{High} - \text{Low}} \right) \cdot (1 - \text{ASR}_{\text{散度}})")
+        st.markdown(r"<span style='font-size:10.5px; color:#64748B;'>💡 <b>穿透机构算法拆单</b>：无论主力如何使用 TWAP/VWAP 碎单拆分，底层锁仓能量 $\partial LFS/\partial t$ 与散度收敛必将真实暴露其净买入内驱力。</span>", unsafe_allow_html=True)
+        
+        st.markdown("**② 连续高斯卷积微积分场 (Continuous Density Field)**")
+        st.latex(r"\frac{\partial P(x,t)}{\partial t} = -\alpha \cdot \text{Turnover}(t) \cdot P(x,t) + V(t) \cdot \frac{1}{\sigma \sqrt{2\pi}} e^{-\frac{(x - \text{VWAP})^2}{2\sigma^2}}")
+        st.markdown(r"<span style='font-size:10.5px; color:#64748B;'>💡 <b>平滑连续质量守恒</b>：$\int_{-\infty}^{+\infty} P(x,t) dx = 100\%$，彻底消除传统软件 1 分钱离散阶梯伪影。</span>", unsafe_allow_html=True)
+
+    with col_p2:
+        st.markdown("**③ 真空推升能效比张量 (Vacuum Thrust Efficiency)**")
+        st.latex(r"\eta_V = \frac{\partial P / \partial t}{\partial \text{Vol} / \partial t \otimes \text{ASR}} = \frac{\Delta P_{\%} \times 100}{\text{Turnover} \times \text{ASR}}")
+        st.markdown(r"<span style='font-size:10.5px; color:#64748B;'>💡 <b>超导主升浪判定</b>：价格一阶梯度与动能摩擦之比。$\eta_V \ge 0.02$ 判定为上方零阻力光速真空跃迁。</span>", unsafe_allow_html=True)
+
+        st.markdown("**④ 断层真空走廊积分与筹码刚性度 (BRI & CPR)**")
+        st.latex(r"BRI = \frac{(100 - Y) \cdot Z}{X_{70} \cdot \text{ASR}} \propto \int_{P_{\text{当前}}}^{P_{\text{目标}}} [1 - P(x)] \, dx, \quad CPR = \frac{LFS \cdot HCCYF13}{\text{ASR} \cdot (1 + \text{Turnover}/100)}")
+        st.markdown(r"<span style='font-size:10.5px; color:#64748B;'>💡 <b>双峰撕裂与超导死锁</b>：哑铃走廊真空磁吸暴拉，底座势能与动态耗散之比 $CPR \ge 20.0$ 触发死锁锁仓。</span>", unsafe_allow_html=True)
+
+
 # 参谋部 AI 深度穿透审计 (模型选择 / 召唤按钮 / 配额水库一体化)
 with st.expander("🤖 天眼参谋部 · AI 深度量化全景穿透审计", expanded=False):
     c_mod, c_btn, c_quota = st.columns([4.2, 3.2, 2.6], gap="small")
