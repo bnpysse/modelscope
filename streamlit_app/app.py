@@ -16,6 +16,7 @@ import pandas as pd
 
 from core.engine import create_engine
 from core.models import FIB_PERIODS
+from core.signals import SignalJudge
 from core.ai_advisor import query_ai_staff_report, evaluate_local_tactical_status
 from core.providers.modelscope_client import modelscope_client
 from core.full_market_screener import screener
@@ -23,6 +24,7 @@ from core.level2_tick_engine import level2_engine
 from core.research_report_engine import report_engine
 from streamlit_app.components.radar_chart import build_radar_figure
 from streamlit_app.components.crosshair import render_radar_with_hud
+
 
 # ==========================================
 # 页面配置 (全屏沉浸式紧凑布局)
