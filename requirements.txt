@@ -1,0 +1,10 @@
+streamlit>=1.40.0
+polars>=1.20.0
+numpy>=1.26.0
+duckdb>=1.0.0
+akshare>=1.15.0
+plotly>=5.24.0
+pydantic>=2.0.0
+requests>=2.31.0
+modelscope>=1.39.0
+python-dotenv>=1.0.0

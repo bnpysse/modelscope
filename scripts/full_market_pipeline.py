@@ -163,6 +163,7 @@ def step2_compute_all_factors() -> pl.DataFrame:
 
             # 执行高精微积分计算
             factors_df = chip_engine.compute_mcd_series(raw_df)
+            res_info = chip_engine.compute_multi_period_resonance(raw_df)
             
             # 保存该股票全历史因子时间序列
             factor_out = FACTORS_DIR / f"{clean_code}_factors.parquet"
@@ -170,6 +171,7 @@ def step2_compute_all_factors() -> pl.DataFrame:
 
             # 提取最新一日截面特征
             latest = factors_df.tail(1).to_dicts()[0]
+            latest["Resonance_Score"] = res_info.get("resonance_score", 50.0)
             local_eval = evaluate_local_tactical_status(latest)
 
             snapshot_records.append({
@@ -186,7 +188,10 @@ def step2_compute_all_factors() -> pl.DataFrame:
                 "Scissor": round(float(latest.get("Scissor", 0.0)), 2),
                 "CYS34": round(float(latest.get("CYS34", 0.0)), 2),
                 "BIAS_5_20": round(float(latest.get("BIAS_5_20", 0.0)), 4),
+                "Norm_BIAS": round(float(latest.get("Norm_BIAS_5_20", 0.0)), 2),
+                "Resonance": round(float(res_info.get("resonance_score", 50.0)), 1),
                 "order": local_eval["order"],
+                "target_pos": local_eval.get("target_position_pct", 100),
             })
         except Exception:
             continue
@@ -211,9 +216,9 @@ def step3_duckdb_tactical_screening():
 
     # 1. 扫描真空走廊 (获利盘跳升 + 筹码单峰密集)
     sql_vac = f"""
-    SELECT code, close, Z_profit, Z_prime, X70, X90, LFS, HCCYF13, BIAS_5_20, order
+    SELECT code, close, Z_profit, Z_prime, X70, X90, LFS, HCCYF13, BIAS_5_20, order, target_pos
     FROM read_parquet('{snapshot_path}')
-    WHERE (Z_prime > 8.0 OR (Z_profit > 80.0 AND X90 < 15.0))
+    WHERE (Z_prime > 5.0 OR (Z_profit > 70.0 AND X90 < 15.0))
       AND LFS >= HCCYF13 * 0.8
     ORDER BY Z_profit DESC
     LIMIT 15;
@@ -222,17 +227,29 @@ def step3_duckdb_tactical_screening():
     print("\n🎯 【战术榜单一：全市场物理真空走廊 + 极度单峰 Top 15】")
     print(vac_df)
 
-    # 2. 扫描战略黄金坑 (市场极度深套超卖 CYS34 < -15%)
+    # 2. 扫描战略黄金坑 (市场极度深套超卖 CYS34 < -10%)
     sql_pit = f"""
-    SELECT code, close, CYS34, Z_profit, LFS, HCCYF13, BIAS_5_20, order
+    SELECT code, close, CYS34, Z_profit, LFS, HCCYF13, BIAS_5_20, order, target_pos
     FROM read_parquet('{snapshot_path}')
-    WHERE CYS34 < -15.0
+    WHERE CYS34 < -10.0
     ORDER BY CYS34 ASC
     LIMIT 15;
     """
     pit_df = con.execute(sql_pit).pl()
     print("\n💎 【战术榜单二：全市场战略级黄金坑逆向超卖 Top 15】")
     print(pit_df)
+
+    # 3. 扫描超级主升浪共振 (Resonance >= 80)
+    sql_res = f"""
+    SELECT code, close, Resonance, LFS, HCCYF13, X90, order, target_pos
+    FROM read_parquet('{snapshot_path}')
+    WHERE Resonance >= 75.0 AND LFS >= HCCYF13
+    ORDER BY Resonance DESC
+    LIMIT 15;
+    """
+    res_df = con.execute(sql_res).pl()
+    print("\n👑 【战术榜单三：全市场超级主升浪三周期共振 Top 15】")
+    print(res_df)
 
 
 if __name__ == "__main__":

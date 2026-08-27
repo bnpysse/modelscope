@@ -98,10 +98,46 @@ INDICATOR_DICTIONARY: Dict[str, Dict[str, Any]] = {
 # 二、 参谋部实战三大战术铁律与终极军令
 # ==============================================================================
 
+# ==============================================================================
+# 二、 参谋部实战 4 级动态仓位分层军令与三大战术铁律
+# ==============================================================================
+
 COMMANDS = {
     "LOCK": "【继续锁仓装死】",
     "CLEAR": "【脉冲诱多坚决清仓】",
     "HEDGE_T0": "【反向T+0对冲】",
+    # 4 级动态仓位升级版
+    "FULL_LOCK": "【满配主升·绝对锁仓】 (建议仓位: 100%)",
+    "DEFENSE_TRIM": "【防线预警·分批减仓】 (建议仓位: 50%)",
+    "REVERSE_HEDGE": "【反向对冲·动态降本】 (建议仓位: 30%)",
+    "HARD_STOP": "【底座坍塌·坚决清仓】 (建议仓位: 0%)",
+}
+
+POSITION_TIERS = {
+    "FULL_LOCK": {
+        "label": "【满配主升·绝对锁仓】",
+        "target_pos": 100,
+        "color": "#FFD700",
+        "condition": "底座金叉护城河牢固 (LFS >= HCCYF13) 且 乖离合理 (BIAS <= 12%)"
+    },
+    "DEFENSE_TRIM": {
+        "label": "【防线预警·分批减仓】",
+        "target_pos": 50,
+        "color": "#3B82F6",
+        "condition": "筹码单峰发散 (X90 > 20%) 且 动能趋缓 (Slope3 < 0)"
+    },
+    "REVERSE_HEDGE": {
+        "label": "【反向对冲·动态降本】",
+        "target_pos": 30,
+        "color": "#F59E0B",
+        "condition": "短线严重超买正乖离 (BIAS > 15%)，保留底仓，浮盈仓反向做T"
+    },
+    "HARD_STOP": {
+        "label": "【底座坍塌·坚决清仓】",
+        "target_pos": 0,
+        "color": "#EF4444",
+        "condition": "底座护城河破位死叉 (HCCYF13 > LFS 且 Slope3 < -1.5) 或 主力对倒出货"
+    },
 }
 
 TACTICAL_LAWS = [
@@ -109,7 +145,7 @@ TACTICAL_LAWS = [
         "id": "LAW_PINCER",
         "name": "【黄金反向钳形律】(无阻力真空主升模型)",
         "condition": "CYF在 40~65 黄金区 ∩ ASR < 15 冰点死锁 ∩ X70 < 10%",
-        "action": "唯一战术指令：【继续锁仓装死】"
+        "action": "战术指令：【满配主升·绝对锁仓】(100%)"
     },
     {
         "id": "LAW_OVERFLOW_BRANCH",
@@ -125,8 +161,16 @@ COMMANDER_PORTFOLIO = {
     "001309": {"name": "德明利", "role": "企业级存储主控与模组龙头"}
 }
 
+POSITION_TIERS = {
+    "TIER_FULL_ASSAULT": {"order": "【满配主升·绝对锁仓】", "position": "80%~100%"},
+    "TIER_DEFENSE_ALERT": {"order": "【防线预警·分批减仓】", "position": "50%"},
+    "TIER_HEDGE_REDUCE_COST": {"order": "【反向对冲·动态降本】", "position": "30%"},
+    "TIER_BASE_COLLAPSE": {"order": "【底座坍塌·坚决清仓】", "position": "0%"},
+}
+
 # ==============================================================================
 # 三、 ModelScope 结构化 System Prompt 规范模板
+
 # ==============================================================================
 
 SYSTEM_PROMPT_STAFF_EXPERT = """# Role: A股新质生产力量化战术总参谋部 (Quantitative Tactical General Staff)
@@ -137,15 +181,15 @@ SYSTEM_PROMPT_STAFF_EXPERT = """# Role: A股新质生产力量化战术总参谋
    - Single intraday snapshot / brief query: MUST start with "天眼静默，常规穿透。"
    - Full CSV dataset / multi-cycle review / deep strategic depth: MUST start with "全景引擎启动。"
 3. Terminal Decision Discipline:
-   - The report MUST conclude with EXACTLY ONE explicit tactical verdict from the following set:
-     【继续锁仓装死】 OR 【脉冲诱多坚决清仓】 OR 【反向T+0对冲】
+   - The report MUST conclude with EXACTLY ONE explicit 4-tier tactical position verdict from the following set:
+     【满配主升·绝对锁仓】(建议仓位 80%~100%) OR 【防线预警·分批减仓】(建议仓位 50%) OR 【反向对冲·动态降本】(建议仓位 30%) OR 【底座坍塌·坚决清仓】(建议仓位 0%)
 
 ## Quantitative Matrix (Five-Dimension Holographic Architecture):
-- 维度一 (底座与阵地): LFS (锁定因子), HCCYF13 (13日护城河), ASR (活动筹码). 铁律: VMA(HCCYF13) > LFS 发生死叉为底座坍塌清仓信号; LFS ↑ + ASR ↓ 为暴力锁仓剪刀差; Slope3(LFS) > +2.0 为控盘加速度爆发.
+- 维度一 (底座与阵地): LFS (锁定因子), HCCYF13 (13日护城河), ASR (活动筹码), Resonance_Score (日/周/月跨周期共振得分). 铁律: HCCYF13 > LFS 发生死叉为底座坍塌清仓信号; LFS ↑ + ASR ↓ 为暴力锁仓剪刀差; Slope3(LFS) > +2.0 为控盘加速度爆发; Resonance_Score > 80 为三周期超级主升共振.
 - 维度二 (空间与抛压): Z (获利比), Z' (日变化), X70/X90 (集中度), Y (空间重合度). 铁律: Z' > 10 且 X90 < 10 构成物理真空走廊; Y > 60% 且高位深套构成哑铃型两极冻结; Z > 95% 且 Turnover < 3% 触发高控盘庄股锁仓拉升豁免.
-- 维度三 (点火与流速): PTR (动能比率), Main% (主力占比), Dare% (游资占比), D_pos (活筹位置). 铁律: PTR > 6 且 Main% > 0 为点火成立; D_pos < 50 为主力强吸锁仓; D_pos > 70 伴随放量尖头为游资倒手派发预警.
+- 维度三 (点火与流速 & Level-2): PTR (动能比率), Main% (主力占比), Dare% (游资占比), D_pos (活筹位置), η_micro (微观推升效率), ABR (主动买盘占比). 铁律: PTR > 6 且 Main% > 0 为点火成立; D_pos < 50 为主力强吸锁仓; 若换手激增但 ABR < 45% 或主力净流出，触发【主力对倒出货警报】.
 - 维度四 (情绪冰点与黄金坑): CYS34 / CYS13 (市场盈亏). 铁律: CYS34 < -15% 且底座未破为战略黄金坑; Y > 60% 且 Turnover < 3.5% 为极限装死区.
-- 维度五 (均线偏离与均值回归): BIAS_5_20 = (MA5 - MA20)/MA20 * 100%. 铁律: BIAS ∈ [-5%, +5%] 为均线完全粘合蓄势区; BIAS > +15% 为脉冲诱多超买; BIAS < -10% 为均值回归超卖.
+- 维度五 (均线偏离与波动率归一化): BIAS_5_20 = (MA5 - MA20)/MA20 * 100%, Norm_BIAS = BIAS / (ATR20/Close * 100). 铁律: BIAS ∈ [-5%, +5%] 为均线完全粘合蓄势区; BIAS > +15% 为脉冲诱多超买; BIAS < -10% 为均值回归超卖.
 
 ## Strategic Asset Portfolio (统帅战略兵力部署档案):
 - 300475 香农芯创: AI 算力与 HBM 存储战略核心，SK海力士中国特级分销+海普先进封测，基石资本运作平台.

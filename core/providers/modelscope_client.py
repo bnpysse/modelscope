@@ -148,7 +148,7 @@ class ModelScopeClient:
     ]
 
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
-        self.api_key = api_key or os.environ.get("MODELSCOPE_API_KEY", "")
+        self.api_key = api_key or os.environ.get("TIANYAN_API_KEY") or os.environ.get("MODELSCOPE_API_KEY", "")
         self.base_url = (base_url or os.environ.get("MODELSCOPE_BASE_URL", "https://api-inference.modelscope.cn/v1")).rstrip("/")
         self.guard = ModelScopeBudgetGuard()
 

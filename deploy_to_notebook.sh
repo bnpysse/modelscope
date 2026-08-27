@@ -28,6 +28,11 @@ service ssh restart 2>/dev/null || true
 echo "⚡ [3/4] 启动高精 MCD 移动成本分布积分递推与全标的物理真值求解..."
 python run_cloud_compute.py
 
+# 4. 自动将因子快照与全量真值推送到 ModelScope 私有数据集仓库
+echo "☁️ [4/4] 自动将五维因子资产同步至 ModelScope 私有数据集 (bnpysse/Tianyan-Data)..."
+python scripts/upload_to_modelscope_hub.py dataset || true
+
 echo "================================================================================"
-echo "🎉 [部署成功] 一手五维因子已全部落盘至 /mnt/workspace/quant_data/ !"
+echo "🎉 [部署成功] 一手五维因子已全部落盘至 /mnt/workspace/quant_data/ 并同步至云端数据集！"
 echo "================================================================================"
+

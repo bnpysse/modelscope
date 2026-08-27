@@ -16,6 +16,7 @@ from core.models import (
     NUMERIC_COLS, FIB_PTR_WINDOWS, DIM5_MA_PERIODS,
     FUND_WINDOWS, TARGET_INFO,
 )
+from core.quant_chip_engine import chip_engine
 
 
 class OmniEngine:
@@ -24,10 +25,34 @@ class OmniEngine:
     """
 
     DEFAULT_NAMES = {
-        "300475": "香农芯创",
-        "300223": "北京君正",
-        "300322": "硕贝德",
         "001309": "德明利",
+        "002409": "雅化集团",
+        "002885": "京泉华",
+        "300223": "北京君正",
+        "300308": "中际旭创",
+        "300322": "硕贝德",
+        "300337": "银之杰",
+        "300363": "博腾股份",
+        "300378": "鼎捷数智",
+        "300475": "香农芯创",
+        "300655": "晶瑞电材",
+        "300850": "新强联",
+        "300941": "创识科技",
+        "301032": "新柴股份",
+        "301171": "易天股份",
+        "301308": "江波龙",
+        "301329": "七丰精工",
+        "688401": "路维光电",
+        "688499": "利元亨",
+        "688525": "佰维存储",
+        "600519": "贵州茅台",
+        "300750": "宁德时代",
+        "002594": "比亚迪",
+        "000001": "平安银行",
+        "601318": "中国平安",
+        "688041": "海光信息",
+        "688256": "寒武纪",
+        "688981": "中芯国际",
     }
 
     def __init__(self, csv_path: str, battle_plan_path: Optional[str] = None):
@@ -42,7 +67,8 @@ class OmniEngine:
         # 完整数据管线
         self._df = self._build_pipeline(raw)
 
-        # 标的列表
+        # 标的与多分组字典
+        self._groups = self._load_groups()
         self._targets = self._load_targets()
 
     # ==========================================
@@ -58,8 +84,18 @@ class OmniEngine:
     def code_col(self) -> str:
         return self._code_col
 
-    def get_targets(self) -> List[TARGET_INFO]:
-        """获取标的列表"""
+    def get_groups(self) -> Dict[str, List[TARGET_INFO]]:
+        """获取全部自选分组字典"""
+        return self._groups
+
+    def get_group_names(self) -> List[str]:
+        """获取分组名称列表"""
+        return list(self._groups.keys())
+
+    def get_targets(self, group_name: Optional[str] = None) -> List[TARGET_INFO]:
+        """获取指定分组或全部标的列表"""
+        if group_name and group_name in self._groups and group_name != "⭐ 全部标的池":
+            return self._groups[group_name]
         return self._targets
 
     def get_stock_name(self, code: str) -> str:
@@ -70,9 +106,108 @@ class OmniEngine:
                 return t.name
         return self.DEFAULT_NAMES.get(code_clean, f"标的 {code_clean}")
 
+    def add_custom_target(self, code: str, name: str = "", group_name: str = "自由观察组") -> TARGET_INFO:
+        """动态添加标的并归类入指定分组"""
+        code_clean = str(code).replace(".0", "").zfill(6)
+        name_clean = name.strip() or self.DEFAULT_NAMES.get(code_clean, f"标的 {code_clean}")
+        info = TARGET_INFO(code=code_clean, name=name_clean)
+
+        if not any(t.code == code_clean for t in self._targets):
+            self._targets.insert(0, info)
+
+        if group_name not in self._groups:
+            self._groups[group_name] = []
+
+        if not any(t.code == code_clean for t in self._groups[group_name]):
+            self._groups[group_name].insert(0, info)
+
+        self._save_groups()
+        return info
+
+    def create_custom_group(self, group_name: str):
+        """新建自选股票池分组"""
+        if group_name and group_name not in self._groups:
+            self._groups[group_name] = []
+            self._save_groups()
+
+    def add_stocks_to_group(self, group_name: str, stock_list: List[dict]):
+        """批量将标的列表加入指定分组"""
+        if group_name not in self._groups:
+            self._groups[group_name] = []
+        for item in stock_list:
+            code = str(item.get("code", "")).zfill(6)
+            name = item.get("name", "") or self.DEFAULT_NAMES.get(code, f"标的 {code}")
+            if code:
+                info = TARGET_INFO(code=code, name=name)
+                if not any(t.code == code for t in self._targets):
+                    self._targets.append(info)
+                if not any(t.code == code for t in self._groups[group_name]):
+                    self._groups[group_name].append(info)
+        self._save_groups()
+
+    def _save_groups(self):
+        """持久化保存自选池分组至 JSON"""
+        if not self._battle_plan_path:
+            base = str(Path(__file__).resolve().parent.parent)
+            self._battle_plan_path = os.path.join(base, "data", "battle_plan.json")
+        try:
+            os.makedirs(os.path.dirname(self._battle_plan_path), exist_ok=True)
+            data_to_save = {
+                "groups": {
+                    g: [{"code": t.code, "name": t.name} for t in t_list]
+                    for g, t_list in self._groups.items()
+                }
+            }
+            with open(self._battle_plan_path, "w", encoding="utf-8") as f:
+                json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def _load_groups(self) -> Dict[str, List[TARGET_INFO]]:
+        """初始化加载自选池分组"""
+        groups: Dict[str, List[TARGET_INFO]] = {}
+        
+        # 默认预置经典战术分组
+        default_groups = {
+            "⭐ 全部标的池": [],
+            "💾 核心存储与算力芯片组": [
+                TARGET_INFO("001309", "德明利"),
+                TARGET_INFO("300475", "香农芯创"),
+                TARGET_INFO("300223", "北京君正"),
+                TARGET_INFO("688525", "佰维存储"),
+                TARGET_INFO("301308", "江波龙"),
+            ],
+            "🚀 物理真空走廊突击组": [
+                TARGET_INFO("300308", "中际旭创"),
+                TARGET_INFO("300363", "博腾股份"),
+                TARGET_INFO("300322", "硕贝德"),
+            ],
+            "🤖 度小满AI精选观察池": [
+                TARGET_INFO("300655", "晶瑞电材"),
+                TARGET_INFO("300337", "银之杰"),
+                TARGET_INFO("002885", "京泉华"),
+            ],
+            "👀 自由自选观察组": []
+        }
+
+        if self._battle_plan_path and os.path.exists(self._battle_plan_path):
+            try:
+                with open(self._battle_plan_path, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                    if "groups" in saved:
+                        for g_name, g_items in saved["groups"].items():
+                            groups[g_name] = [TARGET_INFO(code=i["code"], name=i["name"]) for i in g_items]
+            except Exception:
+                pass
+
+        if not groups:
+            groups = default_groups
+
+        return groups
+
     def get_stock_data(self, code: str, days: int = 0) -> pl.DataFrame:
         """
-        获取单标的数据切片。
+        获取单标的数据切片 (支持全市场 5000+ 标的动态检索与 MCD 实时求解)
         """
         code_padded = str(code).replace(".0", "").zfill(6)
 
@@ -84,19 +219,36 @@ class OmniEngine:
             == code_padded
         ).sort("Date")
 
-        if days > 0:
+        # 若 stock.csv 中无此股票，尝试从 quant_data/factors 或在线计算
+        if stock_df.is_empty():
+            base = str(Path(__file__).resolve().parent.parent)
+            factor_file = Path(base) / "quant_data" / "factors" / f"{code_padded}_factors.parquet"
+            if not factor_file.exists():
+                factor_file = Path("/mnt/workspace/quant_data/factors") / f"{code_padded}_factors.parquet"
+            
+            if factor_file.exists():
+                try:
+                    f_df = pl.read_parquet(factor_file)
+                    if not f_df.is_empty():
+                        stock_df = f_df.with_columns(pl.lit(code_padded).alias(self._code_col)).sort("Date")
+                except Exception:
+                    pass
+
+        if days > 0 and not stock_df.is_empty():
             stock_df = stock_df.tail(days)
 
         return stock_df
+
 
     def get_latest_snapshot(self, code: str) -> Dict[str, Any]:
         """
         获取单标的最新一日的全维数据快照。
         """
-        stock_df = self.get_stock_data(code, days=2)
-        if stock_df.is_empty():
+        all_stock_df = self.get_stock_data(code)
+        if all_stock_df.is_empty():
             return {}
 
+        stock_df = all_stock_df.tail(2)
         latest = stock_df.row(-1, named=True)
         prev = stock_df.row(-2, named=True) if len(stock_df) >= 2 else latest
 
@@ -122,13 +274,46 @@ class OmniEngine:
             cyf66_raw = latest.get("HCCYF13", 50.0)
             cyf66_vma55 = latest.get("HCCYF13", 50.0)
 
-        # 扩充快照字段
+        # 跨周期筹码协整共振计算
+        resonance_info = chip_engine.compute_multi_period_resonance(all_stock_df)
+
+        # ATR 与 Norm_BIAS
+        atr_20 = latest.get("ATR_20", 0.0)
+        if not atr_20 and "High" in all_stock_df.columns and "Low" in all_stock_df.columns:
+            tr_series = (all_stock_df["High"] - all_stock_df["Low"]).tail(20)
+            atr_20 = float(tr_series.mean()) if len(tr_series) > 0 else (close * 0.03)
+        
+        vol_pct = (atr_20 / max(0.01, close)) * 100.0 if close else 3.0
+        norm_bias = bias_5_20 / max(0.5, vol_pct)
+
+        # 扩充快照字段，确保 22 项五维指标全息完整
         latest["MA5"] = round(float(ma5), 2)
         latest["MA20"] = round(float(ma20), 2)
         latest["BIAS_5_20"] = float(bias_5_20)
-        latest["Slope3_LFS"] = float(slope3_lfs)
-        latest["CYF66_Raw"] = float(cyf66_raw) if cyf66_raw else 50.0
-        latest["CYF66_VMA55"] = float(cyf66_vma55) if cyf66_vma55 else 50.0
+        latest["ATR_20"] = round(float(atr_20), 2)
+        latest["Norm_BIAS_5_20"] = round(float(norm_bias), 4)
+        latest["Slope3_LFS"] = float(latest.get("Slope3_LFS", slope3_lfs))
+        latest["CYF66_Raw"] = float(latest.get("CYF66_Raw", cyf66_raw if cyf66_raw else 50.0))
+        latest["CYF66_VMA55"] = float(latest.get("VMA_CYF55", cyf66_vma55 if cyf66_vma55 else 50.0))
+        latest["CYF_Spread_66_55"] = float(latest.get("CYF_Spread_66_55", 0.0))
+        latest["LFS_ASR_Scissor"] = float(latest.get("LFS_ASR_Scissor", float(latest.get("LFS", 50)) - float(latest.get("ASR", 20))))
+        latest["CYC5"] = float(latest.get("CYC5", close))
+        latest["CYC13"] = float(latest.get("CYC13", close))
+        latest["CYC34"] = float(latest.get("CYC34", close))
+        latest["CYC_Infinity"] = float(latest.get("CYC_Infinity", close))
+        latest["CYS13"] = float(latest.get("CYS13", 0.0))
+        latest["CYS34"] = float(latest.get("CYS34", 0.0))
+        latest["BIAS_CYC5_CYCInf"] = float(latest.get("BIAS_CYC5_CYCInf", 0.0))
+        latest["D_pos"] = float(latest.get("D_pos", 50.0))
+        latest["D_Dynamic_Turnover"] = float(latest.get("D_Dynamic_Turnover", latest.get("Turnover", 3.0)))
+        latest["Is_Vacuum_Corridor"] = bool(latest.get("Is_Vacuum_Corridor", False))
+        latest["Is_Major_Controlled"] = bool(latest.get("Is_Major_Controlled", False))
+        latest["Is_Extreme_Hibernation"] = bool(latest.get("Is_Extreme_Hibernation", False))
+        latest["Is_Golden_Pit"] = bool(latest.get("Is_Golden_Pit", False))
+        latest["Is_Hot_Potato_Warning"] = bool(latest.get("Is_Hot_Potato_Warning", False))
+        latest["Resonance_Score"] = float(resonance_info.get("resonance_score", 50.0))
+        latest["Resonance_Diagnosis"] = str(resonance_info.get("diagnosis", ""))
+        latest["Is_Super_Resonance"] = bool(resonance_info.get("is_super_resonance", False))
         latest["Stock_Name"] = self.get_stock_name(code)
 
         return latest
@@ -216,7 +401,7 @@ class OmniEngine:
         if "PTR" in df.columns:
             fib_exprs = [
                 pl.col("PTR")
-                .rolling_mean(window_size=p, min_periods=1)
+                .rolling_mean(window_size=p, min_samples=1)
                 .over(code)
                 .alias(f"PTR_MA{p}")
                 for p in FIB_PTR_WINDOWS
@@ -230,14 +415,14 @@ class OmniEngine:
             if "Turnover" in df.columns:
                 dim5_exprs.append(
                     pl.col("Turnover")
-                    .rolling_mean(window_size=p, min_periods=1)
+                    .rolling_mean(window_size=p, min_samples=1)
                     .over(code)
                     .alias(f"Turnover_MA{p}")
                 )
             if "PTR" in df.columns:
                 dim5_exprs.append(
                     pl.col("PTR")
-                    .rolling_mean(window_size=p, min_periods=1)
+                    .rolling_mean(window_size=p, min_samples=1)
                     .over(code)
                     .alias(f"PTR_MA{p}")
                 )
@@ -263,9 +448,9 @@ class OmniEngine:
             fund_exprs = []
             for w in FUND_WINDOWS:
                 fund_exprs.extend([
-                    pl.col("Main_Pct").rolling_sum(window_size=w, min_periods=1).over(code).alias(f"Main_{w}d"),
-                    pl.col("Dare_Pct").rolling_sum(window_size=w, min_periods=1).over(code).alias(f"Dare_{w}d"),
-                    pl.col("Sum_Pct").rolling_sum(window_size=w, min_periods=1).over(code).alias(f"Sum_{w}d"),
+                    pl.col("Main_Pct").rolling_sum(window_size=w, min_samples=1).over(code).alias(f"Main_{w}d"),
+                    pl.col("Dare_Pct").rolling_sum(window_size=w, min_samples=1).over(code).alias(f"Dare_{w}d"),
+                    pl.col("Sum_Pct").rolling_sum(window_size=w, min_samples=1).over(code).alias(f"Sum_{w}d"),
                 ])
             df = df.with_columns(fund_exprs)
 
@@ -313,7 +498,7 @@ class OmniEngine:
         if "Close" in df.columns:
             df = df.with_columns(
                 pl.col("Close")
-                .rolling_mean(window_size=13, min_periods=1)
+                .rolling_mean(window_size=13, min_samples=1)
                 .over(code)
                 .alias("_MA13"),
             )
@@ -394,20 +579,42 @@ class OmniEngine:
 
 
 def create_engine(base_dir: Optional[str] = None) -> OmniEngine:
-    """创建引擎单例"""
-    base = base_dir or str(Path(__file__).resolve().parent.parent)
-    csv_candidates = [
-        os.path.join(base, "data", "stock.csv"),
-        os.path.join(base, "stock.csv"),
-        os.path.join(base, "data", "stock_clean.csv"),
-    ]
-    valid_csv = [p for p in csv_candidates if os.path.exists(p)]
+    """创建引擎单例 (多路径智能检索)"""
+    candidate_bases = []
+    if base_dir:
+        candidate_bases.append(base_dir)
+    candidate_bases.extend([
+        str(Path(__file__).resolve().parent.parent),
+        str(Path.cwd()),
+        "/home/studio/PROJECT",
+        "/home/studio",
+        "/mnt/workspace",
+        "/mnt/workspace/quant_engine"
+    ])
+    
+    valid_csv = []
+    for b in candidate_bases:
+        for sub in ["data/stock.csv", "stock.csv", "data/stock_clean.csv"]:
+            p = os.path.join(b, sub)
+            if os.path.exists(p) and p not in valid_csv:
+                valid_csv.append(p)
+                
     if not valid_csv:
-        raise FileNotFoundError(f"未找到数据文件 stock.csv 于 {base}")
+        # 尝试在全局查找 stock.csv
+        found = list(Path("/home/studio").rglob("stock.csv")) if os.path.exists("/home/studio") else []
+        if found:
+            valid_csv.append(str(found[0]))
+        else:
+            raise FileNotFoundError(f"未找到数据文件 stock.csv，已检索路径: {candidate_bases}")
 
     csv_path = max(valid_csv, key=os.path.getmtime)
-    plan_path = os.path.join(base, "data", "battle_plan.json")
-    if not os.path.exists(plan_path):
-        plan_path = None
+    
+    plan_path = None
+    for b in candidate_bases:
+        p = os.path.join(b, "data", "battle_plan.json")
+        if os.path.exists(p):
+            plan_path = p
+            break
 
     return OmniEngine(csv_path=csv_path, battle_plan_path=plan_path)
+

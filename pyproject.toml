@@ -9,8 +9,17 @@ dependencies = [
     "pysocks>=1.7.1",
     "streamlit>=1.45.0",
     "plotly>=6.1.0",
+    "modelscope>=1.39.1",
+    "python-dotenv>=1.2.3",
 ]
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
+
+[dependency-groups]
+dev = [
+    "duckdb>=1.5.5",
+    "paramiko>=5.0.0",
+    "pytest>=9.1.1",
+]
