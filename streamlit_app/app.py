@@ -237,15 +237,14 @@ with st.expander("⚙️ 自选股票池与多分组管理 (自主新建分组 /
     tab_m1, tab_m2 = st.tabs(["➕ 添加标的到分组", "📁 新建/管理自选分组"])
     
     with tab_m1:
-        c_in1, c_in2, c_in3, c_in4 = st.columns([2.5, 2.5, 2.5, 1.8], gap="small")
+        c_in1, c_in2, c_in3, c_in4 = st.columns([2.0, 2.2, 2.2, 1.2], gap="small")
         with c_in1:
-            target_group = st.selectbox("归属分组", [g for g in group_names if g != "⭐ 全部标的池"], 0, label_visibility="visible")
+            target_group = st.selectbox("归属分组", [g for g in group_names if g != "⭐ 全部标的池"], 0, label_visibility="collapsed")
         with c_in2:
-            new_code = st.text_input("股票代码", key="add_stock_code", placeholder="例如 600519 或 300750")
+            new_code = st.text_input("股票代码", key="add_stock_code", placeholder="股票代码 (如 600519)", label_visibility="collapsed")
         with c_in3:
-            new_name = st.text_input("股票名称 (可选)", key="add_stock_name", placeholder="例如 贵州茅台")
+            new_name = st.text_input("股票名称 (可选)", key="add_stock_name", placeholder="股票名称 (如 贵州茅台)", label_visibility="collapsed")
         with c_in4:
-            st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
             add_btn = st.button("➕ 加入分组", use_container_width=True)
             if add_btn and new_code:
                 code_c = new_code.strip()
@@ -255,18 +254,16 @@ with st.expander("⚙️ 自选股票池与多分组管理 (自主新建分组 /
                 st.rerun()
 
     with tab_m2:
-        c_g1, c_g2 = st.columns([7, 3], gap="small")
+        c_g1, c_g2 = st.columns([6.4, 1.4], gap="small")
         with c_g1:
-            new_group_name = st.text_input("新建分组名称", placeholder="例如：度小满观察池、战略核心持仓组")
+            new_group_name = st.text_input("新建分组名称", placeholder="新建分组名称 (例如：度小满观察池、战略核心持仓组)", label_visibility="collapsed")
         with c_g2:
-            st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
             create_g_btn = st.button("📁 立即创建分组", use_container_width=True)
             if create_g_btn and new_group_name:
                 engine.create_custom_group(new_group_name.strip())
                 st.success(f"分组【{new_group_name.strip()}】已成功创建！")
                 st.rerun()
 
-# ==========================================
 # ==========================================
 # 3. DuckDB 全市场五维筹码毫秒级战术初筛雷达榜 (移至上部，方便全市场选股)
 # ==========================================
@@ -278,7 +275,7 @@ with st.expander("🔍 DuckDB 全市场五维筹码毫秒级初筛雷达榜 (超
             cpr_df = screener.scan_cpr_superconductor()
             st.dataframe(cpr_df.to_pandas(), use_container_width=True, hide_index=True)
             if st.button("📥 一键将【超导真龙 Top 15】加入「⚡ 超导死锁真空跃迁池」", key="import_cpr"):
-                records = cpr_df.select(["code"]).to_dicts()
+                records = cpr_df.select(["code", "name"]).to_dicts()
                 engine.create_custom_group("⚡ 超导死锁真空跃迁池")
                 engine.add_stocks_to_group("⚡ 超导死锁真空跃迁池", records)
                 st.success("✅ 超导真龙标的已全部自动同步至「⚡ 超导死锁真空跃迁池」！")
@@ -291,7 +288,7 @@ with st.expander("🔍 DuckDB 全市场五维筹码毫秒级初筛雷达榜 (超
             vac_df = screener.scan_vacuum_corridor()
             st.dataframe(vac_df.to_pandas(), use_container_width=True, hide_index=True)
             if st.button("📥 一键将【真空走廊 Top 15】加入「🚀 物理真空走廊突击组」", key="import_vac"):
-                records = vac_df.select(["code"]).to_dicts()
+                records = vac_df.select(["code", "name"]).to_dicts()
                 engine.add_stocks_to_group("🚀 物理真空走廊突击组", records)
                 st.success("✅ 战术榜标的已全部自动同步至「🚀 物理真空走廊突击组」！")
                 st.rerun()
@@ -303,7 +300,7 @@ with st.expander("🔍 DuckDB 全市场五维筹码毫秒级初筛雷达榜 (超
             pit_df = screener.scan_golden_pit()
             st.dataframe(pit_df.to_pandas(), use_container_width=True, hide_index=True)
             if st.button("📥 一键将【黄金坑 Top 15】加入「💎 黄金坑逆向抄底池」", key="import_pit"):
-                records = pit_df.select(["code"]).to_dicts()
+                records = pit_df.select(["code", "name"]).to_dicts()
                 engine.create_custom_group("💎 黄金坑逆向抄底池")
                 engine.add_stocks_to_group("💎 黄金坑逆向抄底池", records)
                 st.success("✅ 黄金坑标的已全部自动同步至「💎 黄金坑逆向抄底池」！")
@@ -316,7 +313,7 @@ with st.expander("🔍 DuckDB 全市场五维筹码毫秒级初筛雷达榜 (超
             res_df = screener.scan_super_resonance()
             st.dataframe(res_df.to_pandas(), use_container_width=True, hide_index=True)
             if st.button("📥 一键将【超级共振 Top 15】加入「👑 超级主升浪共振池」", key="import_res"):
-                records = res_df.select(["code"]).to_dicts()
+                records = res_df.select(["code", "name"]).to_dicts()
                 engine.create_custom_group("👑 超级主升浪共振池")
                 engine.add_stocks_to_group("👑 超级主升浪共振池", records)
                 st.success("✅ 超级共振标的已全部自动同步至「👑 超级主升浪共振池」！")
