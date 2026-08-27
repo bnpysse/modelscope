@@ -81,3 +81,29 @@ tail -f /root/quant_data/qwen7b_gpu_training_progress.log
    - 引入 DPO 偏好对齐，强化“超导死锁与真空走廊”的识别精度；
 3. **vLLM 私有化微服务上线**：
    - 将合并后的模型通过 vLLM 在 192GB GPU 上部署为 OpenAI 兼容的 API 服务，供 Streamlit 大屏实时调用。
+
+---
+
+## ⚠️ 五、 接任 Agent 必读：五大实战铁律与避坑心法 (Successor Golden Rules)
+
+1. **显卡硬件认知铁律**：
+   - 本 DSW 云主机搭载的是 **AMD ROCm GPU（192GB 超大显存）**，**绝不要调用 `nvidia-smi`**（会报错），正确监控命令为 `/usr/bin/rocm-smi`；
+   - PyTorch 训练代码中直接使用 `torch.device("cuda:0")` 即可，底层 ROCm HIP 会自动硬件透传。
+
+2. **存储分层与防爆盘铁律**：
+   - 持久化网盘 `/mnt/workspace` 有 **100GB 硬顶配额**，一旦超限会抛出 `[Errno 122] Disk quota exceeded`；
+   - 高频训练与临时权重必须写在本地 NVMe 盘 **`/root/train_output`（560GB 空间，1.9GB/s 写入）**；
+   - 训练脚本已装备滚动修剪机制（永远只保留最新 2 份，并实时同步镜像至 `/mnt/workspace/models`）。
+
+3. **数理底座与商业软件差异心法**：
+   - 统帅非常关注《Main% 主力增仓比例》与《指南针软件》的差异与准确度；
+   - 本系统的核心优势在于**连续时空偏微分方程与质量守恒反解**，能够彻底穿透机构的 TWAP/VWAP 碎单拆分（冰山委托），数理精度与抗噪性远高于传统软件的离散切片。
+
+4. **HUD 前端排版与交互铁律**：
+   - **中枢一体化**：图一（标的/周期/维五）与图二（AI 审计/模型选择/配额）必须紧密整合在雷达图正上方的【天眼参谋部】控制台中，不要拆散到最顶栏；
+   - **紧凑排版**：AI 审计报告必须使用 `.ai-report-box` 紧凑样式，核心结论使用 `#FCD34D`（黄金色）加粗高亮；
+   - **数理悬浮**：所有指标卡片均需保留多行 KaTeX 连续微积分公式与多指标联立判决的悬浮 Tooltip。
+
+5. **创空间生产环境发布规范**：
+   - 修改 `app.py` 后，务必同步更新 `streamlit_app/app.py`；
+   - 运行 `.venv/bin/python scripts/deploy_to_studio.py` 一键同步推送到 `bnpysse/Tianyan-HUD`（公网域名：`http://ty.donglida.com`）。
