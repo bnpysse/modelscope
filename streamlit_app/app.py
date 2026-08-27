@@ -187,7 +187,7 @@ button[data-baseweb="tab"] { font-size: 11px !important; padding: 4px 12px !impo
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 引擎加载
+# 引擎加载与全状态初始化
 # ==========================================
 @st.cache_resource
 def load_engine():
@@ -195,51 +195,30 @@ def load_engine():
 
 engine = load_engine()
 group_names = engine.get_group_names()
-if "selected_group" not in st.session_state:
+if "selected_group" not in st.session_state or st.session_state["selected_group"] not in group_names:
     st.session_state["selected_group"] = group_names[0] if group_names else "⭐ 全部标的池"
+
+targets = engine.get_targets(st.session_state["selected_group"])
+target_codes = [t.code for t in targets]
+if "selected_code" not in st.session_state or st.session_state["selected_code"] not in target_codes:
+    st.session_state["selected_code"] = targets[0].code if targets else ""
+
+if "selected_days" not in st.session_state:
+    st.session_state["selected_days"] = 34
+
+if "selected_dim5" not in st.session_state:
+    st.session_state["selected_dim5"] = 0
+
+sel_group = st.session_state["selected_group"]
+sel_code = st.session_state["selected_code"]
+sel_days = st.session_state["selected_days"]
+sel_dim5 = st.session_state["selected_dim5"]
 
 quota = modelscope_client.get_quota_status()
 ratio_pct = round(quota["remaining_ratio"] * 100, 1)
 
 # ==========================================
-# 1. 顶栏图表显示控制台 (自选分组 / 标的 / 斐波那契周期 / 维五共振模式)
-# ==========================================
-t0, t1, t2, t3 = st.columns([2.4, 3.2, 2.0, 2.4], gap="small")
-
-with t0:
-    sel_group = st.selectbox("g", group_names, 0, key="group_selector", label_visibility="collapsed")
-    st.session_state["selected_group"] = sel_group
-
-targets = engine.get_targets(sel_group)
-
-with t1:
-    tgt_opts = {f"{t.name} ({t.code})": t.code for t in targets}
-    if not tgt_opts:
-        tgt_opts = {"暂无标的 (请在下方添加)": ""}
-    sel_label = st.selectbox("t", list(tgt_opts.keys()), 0, label_visibility="collapsed")
-    sel_code = tgt_opts[sel_label]
-
-with t2:
-    fib_l = [n for n, _ in FIB_PERIODS]
-    fib_v = [v for _, v in FIB_PERIODS]
-    fi = st.selectbox("f", range(len(fib_l)), 3,
-                      format_func=lambda i: fib_l[i], label_visibility="collapsed")
-    sel_days = fib_v[fi]
-
-with t3:
-    # 严格使用 int 避免类型错误: 0 代表 5+20日共振, 5 代表 5日, 10 代表 10日, 20 代表 20日
-    d5_opts = {
-        "🌊 5+20日多维共振": 0,
-        "⚡ 5日短线游资": 5,
-        "📊 10日波段中枢": 10,
-        "🛡️ 20日标准月线": 20,
-    }
-    sel_d5_label = st.selectbox("d5", list(d5_opts.keys()), 0, label_visibility="collapsed")
-    sel_dim5 = d5_opts[sel_d5_label]
-
-
-# ==========================================
-# 2. 自选股票池与多分组管理紧凑抽屉
+# 1. 自选股票池与多分组管理紧凑抽屉
 # ==========================================
 with st.expander("⚙️ 自选股票池与多分组管理 (自主新建分组 / 全市场标的动态入池)", expanded=False):
     tab_m1, tab_m2 = st.tabs(["➕ 添加标的到分组", "📁 新建/管理自选分组"])
@@ -498,8 +477,60 @@ with st.expander("🔬 天衍数理底座 · 连续微积分时空场与筹码�
         st.markdown(r"<span style='font-size:10.5px; color:#64748B;'>💡 <b>双峰撕裂与超导死锁</b>：哑铃走廊真空磁吸暴拉，底座势能与动态耗散之比 $CPR \ge 20.0$ 触发死锁锁仓。</span>", unsafe_allow_html=True)
 
 
-# 参谋部 AI 深度穿透审计 (模型选择 / 召唤按钮 / 配额水库一体化)
-with st.expander("🤖 天眼参谋部 · AI 深度量化全景穿透审计", expanded=False):
+# 参谋部全息战术控制台与 AI 深度穿透审计 (图一图表设定与图二大模型审计合并)
+with st.expander("🤖 天眼参谋部 · 全息图表战术设定与 AI 深度穿透审计", expanded=True):
+    # 第一排：图表控制四大金刚 (分组 / 标的 / 周期 / 维五)
+    t0, t1, t2, t3 = st.columns([2.4, 3.2, 2.0, 2.4], gap="small")
+    with t0:
+        sel_group = st.selectbox("g", group_names, 
+                                 index=group_names.index(st.session_state["selected_group"]) if st.session_state["selected_group"] in group_names else 0,
+                                 key="group_selector", label_visibility="collapsed")
+        if sel_group != st.session_state["selected_group"]:
+            st.session_state["selected_group"] = sel_group
+            new_targets = engine.get_targets(sel_group)
+            st.session_state["selected_code"] = new_targets[0].code if new_targets else ""
+            st.rerun()
+
+    targets = engine.get_targets(st.session_state["selected_group"])
+    tgt_opts = {f"{t.name} ({t.code})": t.code for t in targets}
+    if not tgt_opts:
+        tgt_opts = {"暂无标的 (请在下方添加)": ""}
+    tgt_codes = list(tgt_opts.values())
+    curr_tgt_idx = tgt_codes.index(st.session_state["selected_code"]) if st.session_state["selected_code"] in tgt_codes else 0
+    with t1:
+        sel_label = st.selectbox("t", list(tgt_opts.keys()), index=curr_tgt_idx, key="target_selector", label_visibility="collapsed")
+        sel_code = tgt_opts[sel_label]
+        if sel_code != st.session_state["selected_code"]:
+            st.session_state["selected_code"] = sel_code
+            st.rerun()
+
+    with t2:
+        fib_l = [n for n, _ in FIB_PERIODS]
+        fib_v = [v for _, v in FIB_PERIODS]
+        curr_fib_idx = fib_v.index(st.session_state.get("selected_days", 34)) if st.session_state.get("selected_days", 34) in fib_v else 3
+        fi = st.selectbox("f", range(len(fib_l)), index=curr_fib_idx,
+                          format_func=lambda i: fib_l[i], key="period_selector", label_visibility="collapsed")
+        sel_days = fib_v[fi]
+        if sel_days != st.session_state.get("selected_days"):
+            st.session_state["selected_days"] = sel_days
+            st.rerun()
+
+    with t3:
+        d5_opts = {
+            "🌊 5+20日多维共振": 0,
+            "⚡ 5日短线游资": 5,
+            "📊 10日波段中枢": 10,
+            "🛡️ 20日标准月线": 20,
+        }
+        d5_vals = list(d5_opts.values())
+        curr_d5_idx = d5_vals.index(st.session_state.get("selected_dim5", 0)) if st.session_state.get("selected_dim5", 0) in d5_vals else 0
+        sel_d5_label = st.selectbox("d5", list(d5_opts.keys()), index=curr_d5_idx, key="dim5_selector", label_visibility="collapsed")
+        sel_dim5 = d5_opts[sel_d5_label]
+        if sel_dim5 != st.session_state.get("selected_dim5"):
+            st.session_state["selected_dim5"] = sel_dim5
+            st.rerun()
+
+    # 第二排：大模型选择 / 召唤审计按钮 / 免费配额水库
     c_mod, c_btn, c_quota = st.columns([4.2, 3.2, 2.6], gap="small")
     with c_mod:
         model_map = {
