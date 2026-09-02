@@ -1,9 +1,6 @@
 """
 天衍五维 · 全市场高阶量化雷达 (全市场扫盘与异动穿透)
 文件位置: tianyan_v2/pages/03_⚡_全市场高阶量化雷达.py
-特性:
-  1. 14 物理张量算子全市场多条件交叉扫描
-  2. 支持一键将捕获标的推送到全息作战总台或加入自选池
 """
 
 import sys
@@ -37,7 +34,7 @@ engine = get_tianyan_engine()
 ctrl = render_top_control_bar(engine, title_prefix="⚡ 天衍五维 · 全市场量化雷达")
 
 st.markdown("### 📡 全市场五维张量量化初筛雷达")
-st.caption("实时多维穿透扫描全市场 5000+ 标的，基于 CPR 筹码刚性、Z' 获利真空与微观推力精准锁定起爆信号。")
+st.caption("实时多维穿透扫描全市场标的，基于 CPR 筹码刚性、Z' 获利真空与微观推力精准锁定起爆信号。")
 
 c_f1, c_f2, c_f3, c_f4 = st.columns(4)
 with c_f1:
@@ -49,10 +46,11 @@ with c_f3:
 with c_f4:
     min_score = st.slider("跨周期共振分下限", 50, 95, 75, 5)
 
-# 生成筛选结果
-all_t = engine.get_all_targets()
+all_t = engine.get_targets()
 scan_results = []
 for idx, t in enumerate(all_t):
+    c = getattr(t, "code", None) or (t.get("code") if isinstance(t, dict) else str(t))
+    n = getattr(t, "name", None) or (t.get("name") if isinstance(t, dict) else c)
     score = int(60 + (idx * 11) % 38)
     cpr = float(28.0 + (idx * 5.3) % 30)
     z_val = float(10.0 + (idx * 7.1) % 35)
@@ -60,8 +58,8 @@ for idx, t in enumerate(all_t):
 
     if cpr >= min_cpr and z_val >= min_z and eta >= min_eta and score >= min_score:
         scan_results.append({
-            "股票代码": t["code"],
-            "股票名称": t.get("name", t["code"]),
+            "股票代码": str(c),
+            "股票名称": str(n),
             "共振评分": score,
             "CPR 刚性": f"{cpr:.1f}",
             "Z' 空间真空": f"+{z_val:.1f}%",

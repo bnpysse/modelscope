@@ -1,11 +1,6 @@
 """
 天衍五维 · 战略战备库 (大宽屏数据工作台)
 文件位置: tianyan_v2/pages/01_📁_天衍战略战备库.py
-特性:
-  1. 彻底释放 1920px 全宽屏，告别小抽屉拥挤狭窄
-  2. 198 日斐波那契跨周期战略纵深矩阵宽表，所有列横向舒展一览无余
-  3. DuckDB 全市场五维毫秒初筛雷达榜
-  4. 自选股票池分组与动态入池管理
 """
 
 import sys
@@ -54,7 +49,7 @@ st.markdown(f"""
 # ══════════════════════════════════════════════
 with st.expander("⚙️ 自选股票池与多分组管理 (自主新建分组 / 全市场标的动态入池)", expanded=True):
     tab_m1, tab_m2 = st.tabs(["➕ 添加标的到分组", "📁 新建自选分组"])
-    custom_groups = engine.get_custom_groups()
+    custom_groups = engine.get_groups()
     group_names = [g for g in custom_groups.keys() if g != "⭐ 全部标的池"]
 
     with tab_m1:
@@ -119,13 +114,15 @@ c_tab1, c_tab2, c_tab3, c_tab4 = st.tabs([
     "⚡ 跨周期共振选股 (5+20+34日)"
 ])
 
-all_t = engine.get_all_targets()
+all_t = engine.get_targets()
 mock_ranks = []
 for idx, t in enumerate(all_t[:20]):
+    c = getattr(t, "code", None) or (t.get("code") if isinstance(t, dict) else str(t))
+    n = getattr(t, "name", None) or (t.get("name") if isinstance(t, dict) else c)
     mock_ranks.append({
         "排名": idx + 1,
-        "代码": t["code"],
-        "标的名称": t.get("name", t["code"]),
+        "代码": str(c),
+        "标的名称": str(n),
         "最新价 (元)": f"{18.5 + (idx * 3.7) % 50:.2f}",
         "CPR 刚性": f"{32.0 + (idx * 4.3) % 25:.1f}",
         "Z' 获利真空": f"+{12.0 + (idx * 5.1) % 30:.1f}%",

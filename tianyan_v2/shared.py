@@ -114,8 +114,8 @@ button[kind="secondary"] {
 
 def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
     init_shared_state()
-    custom_groups = engine.get_custom_groups()
-    group_names = ["⭐ 全部标的池"] + list(custom_groups.keys())
+    groups_dict = engine.get_groups()
+    group_names = ["⭐ 全部标的池"] + [g for g in groups_dict.keys() if g != "⭐ 全部标的池"]
 
     curr_group = st.session_state.get("selected_group", "⭐ 全部标的池")
     if curr_group not in group_names:
@@ -137,12 +137,14 @@ def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
             st.session_state["selected_group"] = sel_group
             st.rerun()
 
-    if sel_group == "⭐ 全部标的池":
-        pool_targets = engine.get_all_targets()
-    else:
-        pool_targets = custom_groups.get(sel_group, [])
+    pool_targets = engine.get_targets(None if sel_group == "⭐ 全部标的池" else sel_group)
 
-    code_to_name = {t["code"]: t.get("name", t["code"]) for t in pool_targets}
+    code_to_name = {}
+    for t in pool_targets:
+        c = getattr(t, "code", None) or (t.get("code") if isinstance(t, dict) else str(t))
+        n = getattr(t, "name", None) or (t.get("name") if isinstance(t, dict) else c)
+        code_to_name[str(c)] = str(n)
+
     if not code_to_name:
         code_to_name = {"300475": "香农芯创"}
 

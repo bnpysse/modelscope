@@ -1,14 +1,10 @@
 """
 天衍五维 · 天眼作战参谋部 (专属 AI 推演研判室)
 文件位置: tianyan_v2/pages/02_🤖_天眼作战参谋部.py
-特性:
-  1. 专为大模型 CoT 深度思维链与研报阅读设计的宽屏交互室
-  2. 真实集成天衍 32B 金融大模型与 ModelScope SDK
-  3. 4 大战术胶囊一键直达
-  4. 📎 多模态附件上传与穿透审计报告生成
 """
 
 import sys
+import json
 from pathlib import Path
 
 CURRENT_FILE = Path(__file__).resolve()
@@ -24,7 +20,7 @@ from tianyan_v2.shared import (
     apply_tactical_theme,
     render_top_control_bar
 )
-from core.ai_advisor import get_advisor
+from core.ai_advisor import query_ai_staff_report, query_ai_chat_response
 
 st.set_page_config(
     page_title="天衍五维 · 天眼作战参谋部",
@@ -41,6 +37,9 @@ ctrl = render_top_control_bar(engine, title_prefix="🤖 天衍五维 · 天眼�
 stock_code = ctrl["stock_code"]
 stock_name = ctrl["stock_name"]
 sel_days   = ctrl["days"]
+
+snapshot = engine.get_latest_snapshot(stock_code)
+fib_matrix = engine.get_fibonacci_depth_matrix(stock_code)
 
 # ══════════════════════════════════════════════
 # 1. 大模型选择与穿透审计总控台
@@ -68,69 +67,100 @@ with c_quota:
     </div>
     """, unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════
-# 2. 战术胶囊直通车
-# ══════════════════════════════════════════════
-st.markdown("#### ⚡ 战术胶囊直通车")
-c_cap1, c_cap2, c_cap3, c_cap4 = st.columns(4, gap="small")
+chat_key = f"messages_{stock_code}"
+if chat_key not in st.session_state:
+    st.session_state[chat_key] = []
 
-capsule_prompt = None
-with c_cap1:
-    if st.button("💬 战术研判对话", use_container_width=True):
-        capsule_prompt = f"请针对标的 {stock_name} ({stock_code}) 当前在 {sel_days} 日斐波那契周期下的微观推力和筹码分布，给出核心操盘建议。"
-with c_cap2:
-    if st.button("🎯 筹码刚性穿透", use_container_width=True):
-        capsule_prompt = f"请穿透审计 {stock_name} ({stock_code}) 的 CPR 刚性与空间获利真空 Z'，主力是否正在超导推升或断层洗盘？"
-with c_cap3:
-    if st.button("⚖️ 4级战术仓位", use_container_width=True):
-        capsule_prompt = f"结合五维共振特征，测算 {stock_name} ({stock_code}) 当前科学仓位控制（底仓、加仓、锁仓与止损防线）。"
-with c_cap4:
-    if st.button("🌊 动能多维压阵", use_container_width=True):
-        capsule_prompt = f"评估 {stock_name} ({stock_code}) 在 5日短线、20日月线与 34日斐波中枢的多周期共振动能差 ΔCYF。"
-
-# ══════════════════════════════════════════════
-# 3. 历史推演对话与报告流展示
-# ══════════════════════════════════════════════
-st.markdown("---")
-
-# 初始化历史对话
-if "chat_messages" not in st.session_state:
-    st.session_state["chat_messages"] = []
-
-# 展示历史对话
-for msg in st.session_state["chat_messages"]:
-    role = msg.get("role", "user")
-    content = msg.get("content", "")
-    with st.chat_message(role):
-        st.markdown(content)
-
-# ══════════════════════════════════════════════
-# 4. 执行大模型推理
-# ══════════════════════════════════════════════
-prompt_to_run = None
 if run_ai:
-    prompt_to_run = f"请针对标的【{stock_name} ({stock_code})】在【{sel_days}日斐波那契中枢】下的五维量化特征（CPR刚性、η微观主力推力、空间获利真空Z'、跨周期动能差ΔCYF），出具完整穿透审计报告！"
-elif capsule_prompt:
-    prompt_to_run = capsule_prompt
+    latest_json = json.dumps(snapshot, ensure_ascii=False, default=str)
+    fib_json = json.dumps(fib_matrix, ensure_ascii=False, default=str)
+    with st.spinner(f"🛰️ 全景引擎启动... 参谋部调用 [{selected_model_id}] 正在执行跨周期物理真值审计..."):
+        res = query_ai_staff_report(
+            stock_code=stock_code,
+            stock_name=stock_name,
+            snapshot_json=latest_json,
+            fib_matrix_json=fib_json,
+            selected_model=selected_model_id
+        )
+        st.session_state[chat_key].append({
+            "role": "assistant",
+            "content": res["content"],
+            "thinking": res.get("thinking", ""),
+            "model_used": res.get("model_used", selected_model_id),
+            "duration": res.get("duration_seconds", 0.0),
+            "type": "audit_report"
+        })
+        st.rerun()
 
-# 底部交互输入框
-user_input = st.chat_input("提出你想要研判的量化问题 (如: 主力是在洗盘还是出货？结合 ASR 谈谈仓位？) ...")
-if user_input:
-    prompt_to_run = user_input
+# ══════════════════════════════════════════════
+# 2. 标的绑定卡片与历史对话流
+# ══════════════════════════════════════════════
+st.markdown(f"""
+<div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 10px 16px; margin: 12px 0;">
+    <span style="font-weight: 700; color: #F8FAFC;">✨ 超级量化科学计算智能体</span>
+    <span style="color: #94A3B8; font-size: 12px; margin-left: 12px;">当前目标: <b style="color: #38BDF8;">{stock_name} ({stock_code})</b></span>
+    <span style="color: #10B981; font-size: 12px; margin-left: 12px;">驱动引擎: {sel_m_label.split('(')[0].strip()}</span>
+</div>
+""", unsafe_allow_html=True)
 
-if prompt_to_run:
-    # 记录用户提问
-    st.session_state["chat_messages"].append({"role": "user", "content": prompt_to_run})
-    with st.chat_message("user"):
-        st.markdown(prompt_to_run)
+for msg in st.session_state[chat_key]:
+    with st.chat_message(msg["role"], avatar="🎖️" if msg["role"] == "user" else "🧠"):
+        if msg.get("thinking"):
+            with st.expander("💡 参谋部 CoT 思考推演链 (大模型内生辩证反思)", expanded=False):
+                st.markdown(f"```text\n{msg['thinking']}\n```")
+        st.markdown(msg["content"])
+        if msg.get("model_used"):
+            st.caption(f"⚡ 模型: {msg['model_used']} | ⏱️ 耗时: {msg.get('duration', 0.0):.2f}s | ● 零幻觉对齐")
 
-    # 召唤大模型生成回复
-    with st.chat_message("assistant"):
-        with st.spinner("🤖 天眼参谋部正在执行多维张量穿透推演与 CoT 思维链分析..."):
-            df = engine.get_security_data(stock_code, days=sel_days)
-            advisor = get_advisor(selected_model_id)
-            reply = advisor.analyze(stock_code, df, query=prompt_to_run)
-            st.markdown(reply)
-            st.session_state["chat_messages"].append({"role": "assistant", "content": reply})
+# ══════════════════════════════════════════════
+# 3. 快捷战术提问预设胶囊
+# ══════════════════════════════════════════════
+st.markdown('<div style="font-size:12px; color:#94A3B8; margin: 16px 0 6px 0;">⚡ 战术胶囊直通车：</div>', unsafe_allow_html=True)
+qp_col1, qp_col2, qp_col3, qp_col4 = st.columns(4)
+qp_query = None
+
+with qp_col1:
+    if st.button("💬 战术对话", use_container_width=True):
+        qp_query = f"请作为高级量化参谋长，全景评述 {stock_name}({stock_code}) 当前五维筹码能量与多周期共振态势！"
+with qp_col2:
+    if st.button("🎯 筹码穿透", use_container_width=True):
+        qp_query = f"请深度剖析 {stock_name}({stock_code}) 当前主力资金是在战略吸筹建仓还是震荡洗盘？重点穿透获利盘浮盈剪刀差与 ASR 控盘底座！"
+with qp_col3:
+    if st.button("⚖️ 4级仓位", use_container_width=True):
+        qp_query = f"根据当前五维指标与 CPR/BRI 刚性度，对 {stock_name}({stock_code}) 给出严谨的 4 级动态仓位裁决（空仓/轻仓/半仓/重仓主升），并列出一票否决风控触发条件！"
+with qp_col4:
+    if st.button("🌊 动能压阵", use_container_width=True):
+        qp_query = f"请深度测算 {stock_name}({stock_code}) 的 CYF66_Raw 与 VMA(T+55) 长周期动能偏离度 ΔCYF，研判中长线动能压阵势能与背离风险！"
+
+user_prompt = st.chat_input("提出你想要研判的量化问题 (如: 主力是在洗盘还是出货？结合 ASR 谈谈仓位？) ...")
+
+active_prompt = qp_query if qp_query else user_prompt
+if active_prompt:
+    st.session_state[chat_key].append({"role": "user", "content": active_prompt})
+    with st.chat_message("user", avatar="🎖️"):
+        st.markdown(active_prompt)
+
+    with st.chat_message("assistant", avatar="🧠"):
+        with st.spinner(f"🧠 [{selected_model_id}] 正在结合 {stock_name} 五维真值推演战术解答..."):
+            chat_res = query_ai_chat_response(
+                messages=st.session_state[chat_key],
+                stock_code=stock_code,
+                stock_name=stock_name,
+                snapshot=snapshot,
+                selected_model=selected_model_id
+            )
+            if chat_res.get("thinking"):
+                with st.expander("💡 参谋部 CoT 思考推演链", expanded=False):
+                    st.markdown(f"```text\n{chat_res['thinking']}\n```")
+            st.markdown(chat_res["content"])
+            st.caption(f"⚡ 模型: {chat_res.get('model_used', selected_model_id)} | ⏱️ 耗时: {chat_res.get('duration_seconds', 0.0):.2f}s")
+            st.session_state[chat_key].append({
+                "role": "assistant",
+                "content": chat_res["content"],
+                "thinking": chat_res.get("thinking", ""),
+                "model_used": chat_res.get("model_used", selected_model_id),
+                "duration": chat_res.get("duration_seconds", 0.0),
+                "type": "chat_response"
+            })
 
 st.caption("🤖 天眼作战参谋部 v2.0 | 内容由天衍五维量化大模型结合物理真值与实盘纪律实时推演")
