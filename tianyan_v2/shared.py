@@ -1,17 +1,11 @@
 """
 天衍五维 · 下一代现代化多页面架构共享核心总线
 文件位置: tianyan_v2/shared.py
-功能:
-  1. 自动挂载项目根目录到 sys.path，保证跨页面 import core 零错误
-  2. 统一初始化和同步跨页面 session_state
-  3. 注入专业金融终端暗黑军工质感 CSS
-  4. 渲染统一的作战指挥导航栏 (顶栏全局联动控制器)
 """
 
 import sys
 from pathlib import Path
 
-# 保证项目根目录在 sys.path 中
 CURRENT_FILE = Path(__file__).resolve()
 PROJECT_ROOT = CURRENT_FILE.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -19,18 +13,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import streamlit as st
 from core.engine import create_engine
-from core.knowledge.tactical_bible import FIBONACCI_CYCLE_DEFS
+from core.models import FIB_PERIODS
 
-# ══════════════════════════════════════════════
-# 单例引擎加载
-# ══════════════════════════════════════════════
 @st.cache_resource
 def get_tianyan_engine():
     return create_engine(PROJECT_ROOT)
 
-# ══════════════════════════════════════════════
-# 全局状态总线初始化
-# ══════════════════════════════════════════════
 def init_shared_state():
     defaults = {
         "selected_group": "⭐ 全部标的池",
@@ -46,20 +34,15 @@ def init_shared_state():
         if k not in st.session_state:
             st.session_state[k] = v
 
-# ══════════════════════════════════════════════
-# 注入专业量化军工暗黑主题 CSS
-# ══════════════════════════════════════════════
 def apply_tactical_theme():
     st.markdown("""
 <style>
-/* 全局暗黑深渊基底 */
 .stApp {
     background: radial-gradient(circle at 50% 0%, #0d1527 0%, #060913 100%) !important;
     color: #E2E8F0 !important;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
 }
 
-/* 顶部与主容器紧凑零边距：给图表与数据网格最大化空间 */
 .block-container {
     padding-top: 2rem !important;
     padding-bottom: 2rem !important;
@@ -68,7 +51,6 @@ def apply_tactical_theme():
     max-width: 98% !important;
 }
 
-/* 战术军令条 */
 .tactical-bar {
     display: flex;
     justify-content: space-between;
@@ -83,7 +65,6 @@ def apply_tactical_theme():
     color: #F87171;
 }
 
-/* 14 物理真值指标卡片紧凑双排网格 */
 .indicator-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -119,7 +100,6 @@ def apply_tactical_theme():
     color: #64748B;
 }
 
-/* 按钮微调 */
 button[kind="primary"] {
     background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%) !important;
     border: none !important;
@@ -132,9 +112,6 @@ button[kind="secondary"] {
 </style>
 """, unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════
-# 渲染全局统一作战顶栏 (标的/周期/共振联动)
-# ══════════════════════════════════════════════
 def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
     init_shared_state()
     custom_groups = engine.get_custom_groups()
@@ -160,7 +137,6 @@ def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
             st.session_state["selected_group"] = sel_group
             st.rerun()
 
-    # 动态计算当前池内标的
     if sel_group == "⭐ 全部标的池":
         pool_targets = engine.get_all_targets()
     else:
@@ -182,13 +158,16 @@ def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
             st.rerun()
 
     with c_fib:
-        fib_labels = [d["label"] for d in FIBONACCI_CYCLE_DEFS]
-        fib_vals   = [d["days"]  for d in FIBONACCI_CYCLE_DEFS]
-        curr_days  = st.session_state.get("selected_days", 34)
-        f_idx = fib_vals.index(curr_days) if curr_days in fib_vals else 2
-        sel_f_idx = st.selectbox("周期", range(len(fib_labels)), index=f_idx, format_func=lambda i: fib_labels[i], key="top_fib_sel", label_visibility="collapsed")
-        if fib_vals[sel_f_idx] != st.session_state["selected_days"]:
-            st.session_state["selected_days"] = fib_vals[sel_f_idx]
+        fib_l = [n for n, _ in FIB_PERIODS]
+        fib_v = [v for _, v in FIB_PERIODS]
+        if "200日 (年线大波段)" not in fib_l:
+            fib_l.append("200日 (年线大波段)")
+            fib_v.append(200)
+        curr_days = st.session_state.get("selected_days", 34)
+        f_idx = fib_v.index(curr_days) if curr_days in fib_v else 3
+        sel_f_idx = st.selectbox("周期", range(len(fib_l)), index=f_idx, format_func=lambda i: fib_l[i], key="top_fib_sel", label_visibility="collapsed")
+        if fib_v[sel_f_idx] != st.session_state["selected_days"]:
+            st.session_state["selected_days"] = fib_v[sel_f_idx]
             st.rerun()
 
     with c_d5:

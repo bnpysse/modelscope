@@ -25,7 +25,6 @@ from tianyan_v2.shared import (
     apply_tactical_theme,
     render_top_control_bar
 )
-from core.knowledge.tactical_bible import FIBONACCI_CYCLE_DEFS
 
 st.set_page_config(
     page_title="天衍五维 · 战略战备库",
@@ -96,55 +95,9 @@ with st.expander("⚙️ 自选股票池与多分组管理 (自主新建分组 /
 st.markdown("### 📊 198 交易日斐波那契战略纵深矩阵 (5, 13, 34, 55, 89, 144, 198)")
 st.caption("跨周期多维共振穿透：对标的历史斐波中枢成本、筹码聚集度、主力获利真空与推力进行全景审计。")
 
-df_full = engine.get_security_data(stock_code, days=198)
-
-if df_full is not None and len(df_full) > 0:
-    fib_rows = []
-    latest_close = float(df_full["close"].iloc[-1])
-    n_bars = len(df_full)
-
-    for cycle in FIBONACCI_CYCLE_DEFS:
-        d = cycle["days"]
-        lbl = cycle["label"]
-        role = cycle["role"]
-
-        if n_bars >= d:
-            sub = df_full.tail(d)
-            start_price = float(sub["close"].iloc[0])
-            start_date  = str(sub["date"].iloc[0])[:10]
-            end_date    = str(sub["date"].iloc[-1])[:10]
-            chg_pct     = ((latest_close - start_price) / (start_price + 1e-6)) * 100.0
-            avg_vol     = float(sub["volume"].mean()) if "volume" in sub.columns else 0.0
-            high_price  = float(sub["high"].max()) if "high" in sub.columns else latest_close
-            low_price   = float(sub["low"].min()) if "low" in sub.columns else latest_close
-            volatility  = ((high_price - low_price) / (low_price + 1e-6)) * 100.0
-        else:
-            start_price = float(df_full["close"].iloc[0])
-            start_date  = str(df_full["date"].iloc[0])[:10]
-            end_date    = str(df_full["date"].iloc[-1])[:10]
-            chg_pct     = ((latest_close - start_price) / (start_price + 1e-6)) * 100.0
-            avg_vol     = 0.0
-            volatility  = 0.0
-
-        # 模拟物理真值指标
-        cpr_est = 30.0 + (d % 7) * 2.1
-        z_est   = 15.0 + (d % 5) * 3.5
-
-        fib_rows.append({
-            "周期": lbl,
-            "交易日": f"T+{d}",
-            "战术角色": role,
-            "起始基准日": start_date,
-            "起始成本 (元)": f"{start_price:.2f}",
-            "当前收盘 (元)": f"{latest_close:.2f}",
-            "区间涨跌幅": f"{chg_pct:+.2f}%",
-            "极差波动率": f"{volatility:.2f}%",
-            "筹码刚性 CPR": f"{cpr_est:.1f}",
-            "获利真空 Z'": f"+{z_est:.1f}%",
-            "共振战备状态": "🔥 突破共振" if chg_pct > 0 and volatility > 15 else "🛡️ 防守蓄势"
-        })
-
-    fib_df = pd.DataFrame(fib_rows)
+fib_matrix = engine.get_fibonacci_depth_matrix(stock_code)
+if fib_matrix:
+    fib_df = pd.DataFrame(fib_matrix)
     st.dataframe(
         fib_df,
         use_container_width=True,
@@ -152,7 +105,7 @@ if df_full is not None and len(df_full) > 0:
         height=320
     )
 else:
-    st.info("正在拉取标的 198 日全息历史序列...")
+    st.info("正在拉取标的 198 日全息历史序列与斐波矩阵计算...")
 
 # ══════════════════════════════════════════════
 # 模块 ③：DuckDB 全市场五维筹码毫秒级初筛雷达榜
@@ -166,7 +119,6 @@ c_tab1, c_tab2, c_tab3, c_tab4 = st.tabs([
     "⚡ 跨周期共振选股 (5+20+34日)"
 ])
 
-# 快速生成全市场初筛展示网格
 all_t = engine.get_all_targets()
 mock_ranks = []
 for idx, t in enumerate(all_t[:20]):
