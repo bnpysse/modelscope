@@ -18,6 +18,8 @@ import shutil
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, default="qwen7b", choices=["qwen7b", "xuanyuan13b", "finglm"])
 parser.add_argument("--resume", action="store_true", help="从最新 Checkpoint 恢复继续训练")
+parser.add_argument("--batch_size", type=int, default=1, help="单步 Batch Size (24G 显卡推荐 1, 192G 显卡推荐 4~8)")
+parser.add_argument("--grad_accum", type=int, default=16, help="梯度累积步数 (保证有效 batch size 恒定为 16)")
 args = parser.parse_args()
 
 WORKSPACE = Path("/mnt/workspace")
@@ -56,17 +58,17 @@ def log_print(msg):
     except Exception as e:
         print(f"Log write error: {e}", flush=True)
 
+# 1. 检查 GPU 状态与硬件类型
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3) if torch.cuda.is_available() else 0
+gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
 log_print("================================================================================")
-log_print(f"🚀 [天衍五维量化超脑] AMD 192GB 显存 · {model_name} 旗舰 GPU 强化微调开跑")
+log_print(f"🚀 [天衍五维量化超脑] GPU 算力引擎 · {model_name} 强化微调开跑")
+log_print(f"🔥 GPU 硬件就绪: {gpu_name} (显存总容量 {vram_gb:.2f} GB, bfloat16 极速模式)")
 log_print("================================================================================")
 log_print(f"🎯 基座模型: {MODEL_DIR}")
 log_print(f"📊 训练样本: {DATA_FILE}")
-log_print(f"💾 高速输出: {OUTPUT_DIR} (560GB NVMe 存储)")
-
-# 1. 检查 GPU 状态
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3) if torch.cuda.is_available() else 0
-log_print(f"🔥 GPU 硬件就绪: 显存总容量 {vram_gb:.2f} GB (ROCm bfloat16 极速加速模式)")
+log_print(f"💾 高速输出: {OUTPUT_DIR}")
 
 # 2. 载入 Tokenizer
 log_print("⏳ 正在载入 Tokenizer 与词表...")
@@ -74,8 +76,8 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-# 3. 载入模型推入 192GB 显存
-log_print(f"⏳ 正在将 {model_name} 推入 192GB 显存 (bfloat16)...")
+# 3. 载入模型推入 显存
+log_print(f"⏳ 正在将 {model_name} 推入显存 (bfloat16)...")
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_DIR,
     torch_dtype=torch.bfloat16,
@@ -83,9 +85,23 @@ model = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True
 )
 
-# 4. 检查是否有历史 checkpoint 准备续训
+# 4. 跨实例 Checkpoint 恢复与续训检查
 start_step = 0
 latest_ckpt = None
+
+# 如果本地 /root 目录为空，尝试从持久化 NAS /mnt/workspace 恢复
+perm_model_dir = WORKSPACE / "models" / OUTPUT_DIR.name
+if (not list(OUTPUT_DIR.glob("checkpoint-*"))) and perm_model_dir.exists():
+    perm_ckpts = sorted(
+        [p for p in perm_model_dir.glob("checkpoint-*") if p.is_dir()],
+        key=lambda p: int(p.name.split("-")[1]) if p.name.split("-")[1].isdigit() else 0
+    )
+    if perm_ckpts:
+        best_p_ckpt = perm_ckpts[-1]
+        local_target = OUTPUT_DIR / best_p_ckpt.name
+        log_print(f"📦 [跨实例迁移] 检测到持久化网盘存档: {best_p_ckpt.name}，正在同步至高速 NVMe...")
+        shutil.copytree(best_p_ckpt, local_target, dirs_exist_ok=True)
+
 if args.resume or list(OUTPUT_DIR.glob("checkpoint-*")):
     ckpts = sorted(
         [p for p in OUTPUT_DIR.glob("checkpoint-*") if p.is_dir()],
@@ -108,9 +124,14 @@ else:
     )
     model = get_peft_model(model, lora_config)
 
+# 显存极致优化: 启用梯度检查点 (Gradient Checkpointing)
+if hasattr(model, "enable_input_require_grads"):
+    model.enable_input_require_grads()
+model.gradient_checkpointing_enable()
+
 model.print_trainable_parameters()
 
-# 5. 数据集解析 (动态长度)
+# 5. 数据集解析 (动态批次填充 collate_fn 极大节省显存并提升吞吐)
 class FinDataset(Dataset):
     def __init__(self, data_path, max_len=1024):
         self.samples = []
@@ -137,23 +158,36 @@ class FinDataset(Dataset):
             content = m.get("content", "")
             full_text += f"<|im_start|>{role}\n{content}<|im_end|>\n"
         
-        enc = tokenizer(full_text, truncation=True, max_length=self.max_len, padding="max_length", return_tensors="pt")
+        enc = tokenizer(full_text, truncation=True, max_length=self.max_len, padding=False, return_tensors="pt")
         input_ids = enc["input_ids"].squeeze(0)
-        attention_mask = enc["attention_mask"].squeeze(0)
         labels = input_ids.clone()
-        labels[attention_mask == 0] = -100
-        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
+        return {"input_ids": input_ids, "labels": labels}
+
+def pad_collate_fn(batch):
+    input_ids = [item["input_ids"] for item in batch]
+    labels = [item["labels"] for item in batch]
+    
+    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+    input_ids_padded = torch.nn.utils.rnn.pad_sequence(input_ids, batch_first=True, padding_value=pad_id)
+    labels_padded = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=-100)
+    attention_mask = (input_ids_padded != pad_id).long()
+    
+    return {
+        "input_ids": input_ids_padded,
+        "attention_mask": attention_mask,
+        "labels": labels_padded
+    }
 
 dataset = FinDataset(DATA_FILE, max_len=1024)
-batch_size = 4
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+batch_size = args.batch_size
+grad_accum_steps = args.grad_accum
+dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=pad_collate_fn)
 
 # 6. 优化器与训练循环 (高并发 GPU 吞吐)
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
-grad_accum_steps = 4
 total_steps = len(dataloader) // grad_accum_steps * 3
 
-log_print(f"🔥 GPU 训练开跑！Batch Size: {batch_size}, 梯度累积: {grad_accum_steps}, 目标总 Step: {total_steps}")
+log_print(f"🔥 GPU 训练开跑！Batch Size: {batch_size}, 梯度累积: {grad_accum_steps}, 动态填充模式, 目标总 Step: {total_steps}")
 
 step = start_step
 accum_loss = 0.0
@@ -161,14 +195,25 @@ start_time = time.time()
 step_start_time = time.time()
 
 model.train()
+torch.cuda.empty_cache()
+
 for epoch in range(3):
     log_print(f"📢 === 开始 Epoch {epoch+1}/3 ===")
-    for batch_idx, batch in enumerate(dataloader):
-        # 跳过已经训练过的步数
-        current_global_batch = epoch * len(dataloader) + batch_idx
-        if current_global_batch < start_step * grad_accum_steps:
-            continue
+    
+    # 极速断点续训: 仅在 Epoch 0 且存在历史存档时跳过对应样本量，无需逐条消耗 CPU
+    if epoch == 0 and start_step > 0:
+        start_sample_idx = min(start_step * grad_accum_steps * batch_size, len(dataset))
+        if start_sample_idx < len(dataset):
+            log_print(f"⏩ [秒级断点恢复] 跳过前 {start_sample_idx} 条样本，直接从 Step {start_step} 开始 GPU 计算！")
+            epoch_indices = list(range(start_sample_idx, len(dataset)))
+            epoch_sampler = torch.utils.data.SubsetRandomSampler(epoch_indices)
+            epoch_dataloader = DataLoader(dataset, batch_size=batch_size, sampler=epoch_sampler, collate_fn=pad_collate_fn)
+        else:
+            epoch_dataloader = dataloader
+    else:
+        epoch_dataloader = dataloader
 
+    for batch_idx, batch in enumerate(epoch_dataloader):
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)
         labels = batch["labels"].to(device)

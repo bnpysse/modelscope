@@ -100,13 +100,29 @@
 # 1. 启动 DSW 隧道 (DSW 终端)
 bash /mnt/workspace/start_tunnel.sh
 
-# 2. 检查两路大模型 GPU 训练实时进展
-tail -f /mnt/workspace/quant_data/gpu_live_training_progress.log
-tail -f /mnt/workspace/quant_data/xuanyuan13b_gpu_training_progress.log
+# 2. 启动 192GB 满血训练 (DSW 终端)
+bash /mnt/workspace/scripts/start_amd_gpu_pipeline.sh
 
-# 3. 检查显卡显存与利用率
+# 3. 启动 Streamlit 作战大盘 (DSW 终端)
+streamlit run /mnt/workspace/app.py --server.port 8501
+
+# 4. 检查显卡显存与利用率
 rocm-smi --showmeminfo vram --showuse
 
-# 4. 本地同步代码并推送到创空间
+# 5. 本地同步代码并推送到创空间
 python scripts/deploy_to_studio.py
 ```
+
+---
+
+## 📜 六、交互输出规范与表格渲染铁律 (Table & Output Rendering Rule)
+
+> [!IMPORTANT]
+> **全系统强制输出规范（统帅最高军令）**：
+> 1. **严禁使用 ASCII 代码块边框表格**（如 `╔ ═ ║ ╚`、`┌ ─ │ └` 或在代码块内画表）：在 Mac、iOS 与 Web 浏览器端，中文汉字与 Emoji 表情（如 🏛️、💎、🚀、🟢）的字宽不均会导致右边界严重错位折行，且在代码块内部 `**加粗**` 标记无法被解析生效。
+> 2. **强制一律使用 GitHub 原生自适应 Markdown 表格**（`| 列1 | 列2 | 列3 |`）：
+>    - 必须由浏览器原生 HTML Table 引擎渲染；
+>    - 表头使用标准对齐语法（`:---` 居左或 `:---:` 居中）；
+>    - 单元格内完美支持 `**加粗**`、`代码高亮`、状态指示灯（🟢/🔴/🟡）与 Emoji；
+>    - 移动端与桌面端自适应排版，保证 100% 绝对对齐、层级分明、优雅美观！
+

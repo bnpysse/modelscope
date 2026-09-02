@@ -105,13 +105,14 @@ def fetch_today_market_spot() -> Optional[pd.DataFrame]:
 
 
 
-def run_daily_incremental_update(trade_date: Optional[str] = None):
-    """执行每日盘后增量追加与因子递推主流程"""
+def run_daily_incremental_update(trade_date: Optional[str] = None, session: str = "close"):
+    """执行每日盘中/盘后增量追加与因子递推主流程 (支持 noon=11:35 与 close=15:35)"""
     t0 = time.time()
     today_str = trade_date or datetime.datetime.now().strftime("%Y-%m-%d")
+    session_name = "午间半日截面(11:35)" if session == "noon" else "盘后全天终审(15:35)"
 
     log("================================================================================")
-    log(f"🚀 [天衍量化大脑] 启动每日盘后增量追加流水线 (交易日: {today_str})")
+    log(f"🚀 [天衍量化大脑] 启动每日数据追加流水线 ({session_name} | 交易日: {today_str})")
     log("================================================================================")
 
     df_spot = fetch_today_market_spot()
@@ -177,10 +178,52 @@ def run_daily_incremental_update(trade_date: Optional[str] = None):
                     "CYS13": round((close - float(last_row.get("Close", close))) / close * 100.0, 2),
                     "CYS34": float(last_row.get("CYS34", 0.0)),
                     "BIAS_5_20": float(last_row.get("BIAS_5_20", 0.0)),
+                # 3. 提取 Level-2 逐笔微观结构与大单资金特征
+                micro_feat = {}
+                try:
+                    from core.level2_tick_engine import level2_engine
+                    micro_feat = level2_engine.get_micro_features_safely(code, {
+                        "Turnover": turnover,
+                        "Close": close,
+                        "Open": open_p,
+                        "Main_Pct": float(last_row.get("Main_Pct", 0.0) or 0.0),
+                        "Dare_Pct": float(last_row.get("Dare_Pct", 0.0) or 0.0)
+                    })
+                except Exception:
+                    pass
+
+                new_factor_row = {
+                    "Target_Code": code,
+                    "Date": today_str,
+                    "Session": session_name,
+                    "Close": close,
+                    "Open": open_p,
+                    "High": high_p,
+                    "Low": low_p,
+                    "Turnover": turnover,
+                    "Z_Profit": round(new_z, 2),
+                    "Z_diff1": round(z_diff1, 2),
+                    "LFS": round(new_lfs, 2),
+                    "HCCYF13": round(new_hccyf, 2),
+                    "ASR": float(last_row.get("ASR", 30.0)),
+                    "X90": float(last_row.get("X90", 15.0)),
+                    "X70": float(last_row.get("X70", 8.0)),
+                    "Y_Overlap": float(last_row.get("Y_Overlap", 50.0)),
+                    "CYS13": round((close - float(last_row.get("Close", close))) / close * 100.0, 2),
+                    "CYS34": float(last_row.get("CYS34", 0.0)),
+                    "BIAS_5_20": float(last_row.get("BIAS_5_20", 0.0)),
                     "Norm_BIAS_5_20": float(last_row.get("Norm_BIAS_5_20", 0.0)),
                     "Resonance_Score": float(last_row.get("Resonance_Score", 50.0)),
                     "Scissor": round(new_lfs - float(last_row.get("ASR", 30.0)), 2),
                     "Slope3_LFS": round(new_lfs - last_lfs, 2),
+                    # Level-2 核心微观订单流指标
+                    "ABR": float(micro_feat.get("active_buy_ratio_%", 50.0)),
+                    "Main_Capital_Net_Wan": float(micro_feat.get("main_capital_net_wan", 0.0)),
+                    "Super_Large_Net_Wan": float(micro_feat.get("super_large_net_wan", 0.0)),
+                    "Eta_Micro": float(micro_feat.get("eta_micro_thrust", 0.0)),
+                    "Is_Wash_Trading": bool(micro_feat.get("is_wash_trading_dump", False)),
+                    "Is_Stealth_Accum": bool(micro_feat.get("is_stealth_accumulation", False)),
+                    "Micro_Diagnosis": str(micro_feat.get("micro_diagnosis", "常规博弈")),
                 }
 
                 # 追加并重写
@@ -196,10 +239,10 @@ def run_daily_incremental_update(trade_date: Optional[str] = None):
     if snapshot_rows:
         snap_df = pl.DataFrame(snapshot_rows)
         snap_df.write_parquet(SNAPSHOT_FILE)
-        log(f"📊 最新全市场截面宽表已落盘: {SNAPSHOT_FILE} (包含 {len(snap_df)} 只最新标的)")
+        log(f"📊 最新全市场截面宽表已落盘: {SNAPSHOT_FILE} (包含 {len(snap_df)} 只最新标的, 已并入 Level-2 微观特征)")
 
     elapsed = round(time.time() - t0, 1)
-    log(f"🎉 盘后增量追加完成！共更新 {updated_count} 只股票因子数据，总耗时: {elapsed}s")
+    log(f"🎉 [{session_name}] 增量追加完成！共更新 {updated_count} 只股票因子与 Level-2 特征，总耗时: {elapsed}s")
 
     # 3. 自动同步到 ModelScope 创空间
     sync_to_modelscope_studio()
@@ -232,4 +275,10 @@ def sync_to_modelscope_studio():
 
 
 if __name__ == "__main__":
-    run_daily_incremental_update()
+    import argparse
+    parser = argparse.ArgumentParser(description="天衍五维量化大脑数据更新引擎")
+    parser.add_argument("--session", choices=["noon", "close"], default="close", help="更新场次: noon(11:35) 或 close(15:35)")
+    parser.add_argument("--date", type=str, default=None, help="指定日期 YYYY-MM-DD")
+    args = parser.parse_args()
+
+    run_daily_incremental_update(trade_date=args.date, session=args.session)

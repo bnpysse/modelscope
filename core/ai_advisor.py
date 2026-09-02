@@ -222,3 +222,53 @@ def query_ai_staff_report(
         "duration_seconds": 0.01,
         "quota_status": modelscope_client.get_quota_status()
     }
+
+
+def query_ai_chat_response(
+    messages: List[Dict[str, str]],
+    stock_code: str,
+    stock_name: str,
+    snapshot: Dict[str, Any],
+    selected_model: str = "MiniMax/MiniMax-M1-80k"
+) -> Dict[str, Any]:
+    """
+    交互式多轮战术对话：自动注入标的实时截面物理真值与法典系统提示词
+    """
+    context_prefix = f"""【当前研判标的实时物理真值情报】
+- 标的: {stock_name} ({stock_code})
+- 收盘价: {snapshot.get('Close')} 元, 换手率: {snapshot.get('Turnover')}%
+- LFS={snapshot.get('LFS')}, HCCYF13={snapshot.get('HCCYF13')}, ASR={snapshot.get('ASR')}%
+- Z获利比例={snapshot.get('Z_Profit', snapshot.get('Z'))}%, X70={snapshot.get('X70')}%, X90={snapshot.get('X90')}%, Y重合度={snapshot.get('Y_Overlap')}%
+- CYF66_Raw / VMA(T+55): {snapshot.get('CYF66_Raw', 50):.2f} / {snapshot.get('CYF66_VMA55', 50):.2f} (ΔCYF={snapshot.get('CYF_Spread_66_55', 0):.2f})
+- 主力净流入 Main%={snapshot.get('Main_Pct')}%, 游资 Dare%={snapshot.get('Dare_Pct')}%, 活筹位置 D_pos={snapshot.get('D_Pos')}
+- 均线偏离 BIAS_5_20={snapshot.get('BIAS_5_20'):.2f}%, CYS34={snapshot.get('CYS34'):.2f}%
+"""
+    full_system = f"{SYSTEM_PROMPT_STAFF_EXPERT}\n\n{context_prefix}"
+    
+    api_messages = [{"role": "system", "content": full_system}]
+    for m in messages:
+        api_messages.append({"role": m["role"], "content": m["content"]})
+        
+    try:
+        res = modelscope_client.create_chat_completion(
+            messages=api_messages,
+            model=selected_model,
+            temperature=0.2,
+            max_tokens=2500
+        )
+        return {
+            "status": "success",
+            "content": res.get("content", "").strip(),
+            "thinking": res.get("thinking", ""),
+            "model_used": res.get("model", selected_model),
+            "duration_seconds": res.get("duration_seconds", 0.0),
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "content": f"⚠️ 调用大模型出现异常: {e}，请检查网络或切换其他模型。",
+            "thinking": "",
+            "model_used": selected_model,
+            "duration_seconds": 0.0,
+        }
+

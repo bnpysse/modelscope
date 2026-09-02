@@ -207,32 +207,46 @@ class OmniEngine:
 
     def get_stock_data(self, code: str, days: int = 0) -> pl.DataFrame:
         """
-        获取单标的数据切片 (支持全市场 5000+ 标的动态检索与 MCD 实时求解)
+        获取单标的数据切片 (优先读取最新的 Parquet 因子库，确保数据与复盘保持最新)
         """
         code_padded = str(code).replace(".0", "").zfill(6)
+        stock_df = pl.DataFrame()
 
-        stock_df = self._df.filter(
-            pl.col(self._code_col)
-            .cast(pl.Utf8)
-            .str.replace_all(r"\.0$", "")
-            .str.zfill(6)
-            == code_padded
-        ).sort("Date")
-
-        # 若 stock.csv 中无此股票，尝试从 quant_data/factors 或在线计算
-        if stock_df.is_empty():
-            base = str(Path(__file__).resolve().parent.parent)
-            factor_file = Path(base) / "quant_data" / "factors" / f"{code_padded}_factors.parquet"
-            if not factor_file.exists():
-                factor_file = Path("/mnt/workspace/quant_data/factors") / f"{code_padded}_factors.parquet"
-            
+        # 1. 优先从 quant_data/factors 或 quant_data/daily_parquet 读取最新因子与行情
+        base = str(Path(__file__).resolve().parent.parent)
+        for base_dir in [base, "/mnt/workspace", "."]:
+            factor_file = Path(base_dir) / "quant_data" / "factors" / f"{code_padded}_factors.parquet"
             if factor_file.exists():
                 try:
                     f_df = pl.read_parquet(factor_file)
                     if not f_df.is_empty():
                         stock_df = f_df.with_columns(pl.lit(code_padded).alias(self._code_col)).sort("Date")
+                        break
                 except Exception:
                     pass
+
+            daily_file = Path(base_dir) / "quant_data" / "daily_parquet" / f"{code_padded}.parquet"
+            if stock_df.is_empty() and daily_file.exists():
+                try:
+                    d_df = pl.read_parquet(daily_file)
+                    if not d_df.is_empty():
+                        stock_df = d_df.with_columns(pl.lit(code_padded).alias(self._code_col)).sort("Date")
+                        break
+                except Exception:
+                    pass
+
+        # 2. 若 Parquet 因子库中暂无，再回退到历史 stock.csv 检索
+        if stock_df.is_empty():
+            stock_df = self._df.filter(
+                pl.col(self._code_col)
+                .cast(pl.Utf8)
+                .str.replace_all(r"\.0$", "")
+                .str.zfill(6)
+                == code_padded
+            ).sort("Date")
+
+        if not stock_df.is_empty():
+            stock_df = self._build_pipeline(stock_df)
 
         if days > 0 and not stock_df.is_empty():
             stock_df = stock_df.tail(days)
@@ -268,11 +282,13 @@ class OmniEngine:
 
         # CYF66_Raw / VMA55
         if "HCCYF13" in stock_df.columns:
-            cyf66_raw = stock_df["HCCYF13"].tail(66).mean()
-            cyf66_vma55 = stock_df["HCCYF13"].tail(55).mean()
+            cyf_s = stock_df["HCCYF13"].drop_nulls()
+            cyf66_raw = float(cyf_s.tail(66).mean()) if len(cyf_s) > 0 else 50.0
+            cyf66_vma55 = float(cyf_s.tail(55).mean()) if len(cyf_s) > 0 else 50.0
         else:
-            cyf66_raw = latest.get("HCCYF13", 50.0)
-            cyf66_vma55 = latest.get("HCCYF13", 50.0)
+            cyf66_raw = float(latest.get("HCCYF13", 50.0))
+            cyf66_vma55 = float(latest.get("HCCYF13", 50.0))
+        cyf_spread = round(cyf66_raw - cyf66_vma55, 2)
 
         # 跨周期筹码协整共振计算
         resonance_info = chip_engine.compute_multi_period_resonance(all_stock_df)
@@ -293,9 +309,9 @@ class OmniEngine:
         latest["ATR_20"] = round(float(atr_20), 2)
         latest["Norm_BIAS_5_20"] = round(float(norm_bias), 4)
         latest["Slope3_LFS"] = float(latest.get("Slope3_LFS", slope3_lfs))
-        latest["CYF66_Raw"] = float(latest.get("CYF66_Raw", cyf66_raw if cyf66_raw else 50.0))
-        latest["CYF66_VMA55"] = float(latest.get("VMA_CYF55", cyf66_vma55 if cyf66_vma55 else 50.0))
-        latest["CYF_Spread_66_55"] = float(latest.get("CYF_Spread_66_55", 0.0))
+        latest["CYF66_Raw"] = round(float(latest.get("CYF66_Raw", cyf66_raw)), 2)
+        latest["CYF66_VMA55"] = round(float(latest.get("VMA_CYF55", cyf66_vma55)), 2)
+        latest["CYF_Spread_66_55"] = round(float(latest.get("CYF_Spread_66_55", cyf_spread)), 2)
         latest["LFS_ASR_Scissor"] = float(latest.get("LFS_ASR_Scissor", float(latest.get("LFS", 50)) - float(latest.get("ASR", 20))))
         latest["CYC5"] = float(latest.get("CYC5", close))
         latest["CYC13"] = float(latest.get("CYC13", close))

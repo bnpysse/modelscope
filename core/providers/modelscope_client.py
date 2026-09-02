@@ -173,9 +173,14 @@ class ModelScopeClient:
         max_tokens: int = 3500,
         timeout: float = 35.0
     ) -> Dict[str, Any]:
-        """
-        调用 ModelScope 免费大模型（带事前预算门神与多模型自动级联容灾）
-        """
+        # 0. 优先检测是否为本地/云端挂载的 AWQ 4-bit 终极模型
+        if os.path.exists(model) or "tianyan_omni_32b_awq4bit" in model:
+            try:
+                from core.providers.local_awq_runner import local_awq_runner
+                return local_awq_runner.generate(messages, model_path=model, temperature=temperature, max_tokens=max_tokens)
+            except Exception as e:
+                logger.warning(f"本地 AWQ 模型加载/推理提示 ({e})，自动回退到 ModelScope 云端大模型...")
+
         # 1. 预算门神事前拦截
         allowed, reason = self.guard.can_call()
         if not allowed:
