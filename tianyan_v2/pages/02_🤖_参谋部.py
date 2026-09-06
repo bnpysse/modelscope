@@ -60,6 +60,7 @@ dim6 = truth_matrix["dim6_nextday"]
 
 model_map = {
     "天衍 32B 终极大量化模型 (Qwen-30B/32B 云端千卡)": "tianyan-32b-awq",
+    "Qwen3-VL 235B 多模态视觉旗舰 (穿透K线/研报长图/雪球截图)": "Qwen/Qwen3-VL-235B-A22B-Instruct",
     "MiniMax-M1 80K (长窗口深度思考·极速响应)": "MiniMax/MiniMax-M1-80k",
     "DeepSeek-R1-Distill-Qwen-32B (强化推理)": "deepseek-r1-qwen-32b",
     "Local CPU/GPU Fast Heuristic (本地轻量)": "local-fast-heuristic",
@@ -206,13 +207,61 @@ latest_json = json.dumps(snapshot, ensure_ascii=False, default=str)
 fib_json = json.dumps(fib_matrix, ensure_ascii=False, default=str)
 
 # 处理用户自定义输入
+# 处理用户自定义输入 (开启小“+”号支持，支持直接粘贴剪贴板截图或上传K线/研报文件)
 try:
-    user_input = st.chat_input("向天眼参谋部下达深度推演指令...", accept_file=False)
+    user_input = st.chat_input("向天眼参谋部下达深度推演指令 (支持直接粘贴/上传K线与研报截图)...", accept_file=True)
 except Exception:
-    user_input = st.chat_input("向天眼参谋部下达推演指令...")
+    user_input = st.chat_input("向天眼参谋部下达深度推演指令...")
+
+custom_user_msg = None
 
 if user_input:
-    qp_query = str(user_input)
+    prompt_str = ""
+    attached_file = None
+    if isinstance(user_input, dict):
+        prompt_str = str(user_input.get("text", "")).strip()
+        files = user_input.get("files", [])
+        if files:
+            attached_file = files[0]
+    elif hasattr(user_input, "text"):
+        prompt_str = str(getattr(user_input, "text", "")).strip()
+        files = getattr(user_input, "files", [])
+        if files:
+            attached_file = files[0]
+    else:
+        prompt_str = str(user_input).strip()
+
+    if attached_file:
+        import base64
+        file_bytes = attached_file.getvalue()
+        fname = getattr(attached_file, "name", "image.png")
+        mime = getattr(attached_file, "type", "image/png") or "image/png"
+        is_image = mime.startswith("image/") or fname.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"))
+
+        if is_image:
+            b64_str = base64.b64encode(file_bytes).decode("utf-8")
+            custom_user_msg = {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_str if prompt_str else f"请深度穿透识别并分析这张 【{fname}】 图像/K线走势/研报截图，结合当前五维物理底座进行战术推演！"},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64_str}"}}
+                ]
+            }
+            qp_query = f"🖼️ [{fname}] {prompt_str if prompt_str else '图表穿透识别推演'}"
+            # 视觉多模态智能自适应路由：如果当前选中的是纯文本模型，自动升阶至千亿级 Qwen3-VL 235B
+            if "vl" not in str(selected_model_id).lower():
+                selected_model_id = "Qwen/Qwen3-VL-235B-A22B-Instruct"
+        else:
+            try:
+                doc_text = file_bytes.decode("utf-8", errors="ignore")
+                full_text = f"{prompt_str}\n\n【附带文档内容 ({fname})】：\n{doc_text}"
+            except Exception:
+                full_text = prompt_str
+            custom_user_msg = {"role": "user", "content": full_text}
+            qp_query = f"📄 [{fname}] {prompt_str if prompt_str else '文档穿透审计'}"
+    else:
+        custom_user_msg = {"role": "user", "content": prompt_str}
+        qp_query = prompt_str
 
 if run_eight_dim:
     with st.spinner(f"🛰️ 正在解算八维物理真值并由 [{selected_model_id}] 生成全息总裁决简报..."):
@@ -258,7 +307,7 @@ elif qp_query:
             st.rerun()
     else:
         with st.spinner(f"🧠 [{selected_model_id}] 正在结合 {stock_name} 物理截面深度推演..."):
-            chat_history = [{"role": "user", "content": qp_query}]
+            chat_history = [custom_user_msg] if custom_user_msg else [{"role": "user", "content": qp_query}]
             res = query_ai_chat_response(
                 messages=chat_history,
                 stock_code=stock_code,

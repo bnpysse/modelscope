@@ -298,15 +298,29 @@ def query_ai_staff_report(
 
 
 def query_ai_chat_response(
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     stock_code: str,
     stock_name: str,
     snapshot: Dict[str, Any],
     selected_model: str = "MiniMax/MiniMax-M1-80k"
 ) -> Dict[str, Any]:
     """
-    交互式多轮战术对话：自动注入标的实时截面物理真值与法典系统提示词
+    交互式多轮战术对话：自动注入标的实时截面物理真值与法典系统提示词，支持多模态图像/文档穿透
     """
+    # 检测是否包含图像
+    has_image = False
+    for m in messages:
+        c = m.get("content")
+        if isinstance(c, list):
+            for part in c:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    has_image = True
+                    break
+
+    # 视觉多模态请求自动路由到千亿级多模态视觉旗舰 Qwen3-VL 235B
+    if has_image and "vl" not in str(selected_model).lower():
+        selected_model = "Qwen/Qwen3-VL-235B-A22B-Instruct"
+
     physics_block, _ = build_physics_context_block(stock_code, stock_name, snapshot)
     full_system = f"{SYSTEM_PROMPT_STAFF_EXPERT}\n\n{physics_block}"
     

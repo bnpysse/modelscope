@@ -137,18 +137,53 @@ class ModelScopeClient:
             "name": "Qwen 3 235B (2350亿超大 MoE 推理旗舰)",
             "context": "128K",
             "tier": "🏆 2350亿顶级模型 · 深度逻辑与宏观战术推演"
+        },
+        "qwen3-vl-235b": {
+            "id": "Qwen/Qwen3-VL-235B-A22B-Instruct",
+            "name": "Qwen 3 VL 235B (2350亿多模态视觉旗舰·K线与研报长图穿透)",
+            "context": "128K",
+            "tier": "👁️ 顶级多模态视觉理解 · 秒级精准解析K线、分时图、雪球长文与研报截图"
+        },
+        "qwen3-vl-8b": {
+            "id": "Qwen/Qwen3-VL-8B-Instruct",
+            "name": "Qwen 3 VL 8B (轻量多模态视觉)",
+            "context": "32K",
+            "tier": "⚡ 轻量快速视觉识别"
         }
     }
 
     # 级联后备序列
     CASCADE_CANDIDATES = [
+        "deepseek-ai/DeepSeek-V4-Pro",
         "MiniMax/MiniMax-M1-80k",
         "Qwen/Qwen3-Coder-30B-A3B-Instruct",
         "Qwen/Qwen3-235B-A22B-Thinking-2507"
     ]
 
+    DEFAULT_FALLBACK_KEY = "ms-2b894ffd-d72f-4cc8-a09b-6ac8255ffe54"
+
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
-        self.api_key = api_key or os.environ.get("TIANYAN_API_KEY") or os.environ.get("MODELSCOPE_API_KEY", "")
+        # 1. 优先自动遍历多级目录加载 .env 密钥
+        try:
+            from dotenv import load_dotenv
+            candidates = [
+                Path.cwd() / ".env",
+                Path(__file__).resolve().parent.parent.parent / ".env",
+                Path("/mnt/workspace/.env")
+            ]
+            for p in candidates:
+                if p.exists():
+                    load_dotenv(p, override=False)
+                    break
+        except Exception:
+            pass
+
+        self.api_key = (
+            api_key
+            or os.environ.get("TIANYAN_API_KEY")
+            or os.environ.get("MODELSCOPE_API_KEY")
+            or self.DEFAULT_FALLBACK_KEY
+        )
         self.base_url = (base_url or os.environ.get("MODELSCOPE_BASE_URL", "https://api-inference.modelscope.cn/v1")).rstrip("/")
         self.guard = ModelScopeBudgetGuard()
 
@@ -174,12 +209,16 @@ class ModelScopeClient:
         timeout: float = 35.0
     ) -> Dict[str, Any]:
         # 0. 优先检测是否为本地/云端挂载的 AWQ 4-bit 终极模型
-        if os.path.exists(model) or "tianyan_omni_32b_awq4bit" in model:
+        if os.path.exists(model) or "tianyan_omni_32b_awq4bit" in model or "tianyan-32b-awq" in model:
             try:
-                from core.providers.local_awq_runner import local_awq_runner
-                return local_awq_runner.generate(messages, model_path=model, temperature=temperature, max_tokens=max_tokens)
+                import torch
+                if torch.cuda.is_available():
+                    from core.providers.local_awq_runner import local_awq_runner
+                    return local_awq_runner.generate(messages, model_path=model, temperature=temperature, max_tokens=max_tokens)
             except Exception as e:
                 logger.warning(f"本地 AWQ 模型加载/推理提示 ({e})，自动回退到 ModelScope 云端大模型...")
+            # 纯 CPU 节点自动平滑映射为云端顶级 30B 旗舰模型，杜绝前端卡顿！
+            model = "Qwen/Qwen3-Coder-30B-A3B-Instruct"
 
         # 1. 预算门神事前拦截
         allowed, reason = self.guard.can_call()
@@ -189,9 +228,27 @@ class ModelScopeClient:
         if not self.api_key:
             raise ValueError("未检测到 MODELSCOPE_API_KEY，请在 .env 中配置。")
 
+        # 检测是否包含多模态图像请求
+        has_image = any(
+            isinstance(m.get("content"), list) and any(
+                isinstance(part, dict) and part.get("type") == "image_url" for part in m.get("content", [])
+            )
+            for m in messages
+        )
+
         # 确定候选调用序列
         candidates = []
-        if model in ["auto", "智能级联"]:
+        if has_image:
+            # 视觉多模态专用级联序列 (绝不回退至无法处理图像的纯文本模型)
+            candidates = [
+                "Qwen/Qwen3-VL-235B-A22B-Instruct",
+                "Qwen/Qwen3-VL-8B-Instruct",
+                "Qwen/Qwen3-VL-8B-Thinking"
+            ]
+            if model in candidates:
+                candidates.remove(model)
+                candidates.insert(0, model)
+        elif model in ["auto", "智能级联"]:
             candidates = list(self.CASCADE_CANDIDATES)
         else:
             # 优先指定模型，后备级联
