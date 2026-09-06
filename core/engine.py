@@ -401,6 +401,91 @@ class OmniEngine:
         """
         获取单标的最新一日的全维数据快照 (支持 compass_ocr 与 duckdb 双模切换，支持自动跨基座自愈)
         """
+        code_padded = str(code).replace(".0", "").zfill(6)
+
+        # 1. 在 DuckDB 模式下，优先从全市场统一物化快照 (full_market_snapshot.parquet) 快速直取权威物理真值
+        if mode in ("duckdb", "math"):
+            snap_paths = [
+                Path("/mnt/workspace/quant_data/full_market_snapshot.parquet"),
+                Path(__file__).resolve().parent.parent / "quant_data" / "full_market_snapshot.parquet"
+            ]
+            for sp in snap_paths:
+                if sp.exists():
+                    try:
+                        import duckdb
+                        con = duckdb.connect()
+                        res = con.execute(f"SELECT * FROM '{sp}' WHERE code = '{code_padded}'").df()
+                        con.close()
+                        if not res.empty:
+                            row = res.iloc[0].to_dict()
+                            close_val = float(row.get("close", 0.0))
+                            lfs_val = float(row.get("LFS", 50.0))
+                            hccyf_val = float(row.get("HCCYF13", 50.0))
+                            asr_val = float(row.get("ASR", 20.0))
+                            z_val = float(row.get("Z_profit", row.get("Z_Profit", 50.0)))
+                            z_prime = float(row.get("Z_prime", 0.0))
+                            x70_val = float(row.get("X70", 15.0))
+                            x90_val = float(row.get("X90", 25.0))
+                            cys34_val = float(row.get("CYS34", 0.0))
+                            bias_val = float(row.get("BIAS_5_20", 0.0))
+                            slope3_val = float(row.get("Slope3", row.get("Slope3_LFS", 0.0)))
+                            to_val = float(row.get("turnover", row.get("Turnover", 3.0)))
+                            name_val = row.get("name") or self.DEFAULT_NAMES.get(code_padded, f"标的 {code_padded}")
+
+                            snap_dict = {
+                                "Target_Code": code_padded,
+                                "code": code_padded,
+                                "Stock_Name": name_val,
+                                "name": name_val,
+                                "Date": str(row.get("date", ""))[:10],
+                                "Date_Disp": str(row.get("date", ""))[-5:],
+                                "Date_Full": str(row.get("date", ""))[:10],
+                                "Close": close_val,
+                                "close": close_val,
+                                "Open": float(row.get("open", close_val)),
+                                "High": float(row.get("high", close_val)),
+                                "Low": float(row.get("low", close_val)),
+                                "Turnover": to_val,
+                                "LFS": lfs_val,
+                                "HCCYF13": hccyf_val,
+                                "ASR": asr_val,
+                                "Z_Profit": z_val,
+                                "Z": z_val,
+                                "Z_diff1": z_prime,
+                                "X70": x70_val,
+                                "X90": x90_val,
+                                "Y_Overlap": float(row.get("Y_Overlap", row.get("Overlap_Y", 20.0))),
+                                "CYS34": cys34_val,
+                                "CYS13": float(row.get("CYS13", cys34_val * 0.5)),
+                                "BIAS_5_20": bias_val,
+                                "Norm_BIAS_5_20": round(bias_val / 1.8, 4),
+                                "Slope3_LFS": slope3_val,
+                                "Slope_3d": slope3_val,
+                                "Scissor": float(row.get("Scissor", hccyf_val - lfs_val)),
+                                "LFS_ASR_Scissor": float(lfs_val - asr_val),
+                                "MA5": float(row.get("ma5", close_val)),
+                                "MA20": float(row.get("ma20", close_val)),
+                                "CYC5": float(row.get("cyc5", close_val)),
+                                "CYC13": float(row.get("cyc13", close_val)),
+                                "CYC34": float(row.get("cyc34", close_val)),
+                                "CYC_Infinity": float(row.get("cyc_infinity", close_val)),
+                                "BIAS_CYC5_CYCInf": 0.0,
+                                "D_Pos": 50.0,
+                                "D_pos": 50.0,
+                                "D_Dynamic_Turnover": to_val,
+                                "Resonance_Score": 85.0 if lfs_val >= hccyf_val and x90_val < 25.0 else 55.0,
+                                "Resonance_Diagnosis": "【多周期共振主升】" if lfs_val >= hccyf_val else "【周期分歧·震荡蓄势】",
+                                "Is_Super_Resonance": (lfs_val >= hccyf_val and x90_val < 25.0),
+                                "P_escape": float(row.get("P_escape", 0.0)),
+                                "Lambda_dmd": float(row.get("Lambda_dmd", 0.0)),
+                                "W_cost": float(row.get("W_cost", 0.0)),
+                                "vwap": float(row.get("vwap", close_val))
+                            }
+                            return snap_dict
+                    except Exception:
+                        pass
+                    break
+
         all_stock_df = self.get_stock_data(code, mode=mode, allow_network=allow_network)
         if all_stock_df.is_empty() and mode != "duckdb":
             # 自动跨基座自愈：若静态 stock.csv 无此标的，自动升阶至偏微分(DuckDB)/动态网络全量计算
