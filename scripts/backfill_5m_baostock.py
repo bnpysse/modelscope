@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 import duckdb
+import pandas as pd
 import baostock as bs
 
 BASE_DIR = Path("/root/tianyan_l2_etl")
@@ -91,8 +92,7 @@ def run_backfill(start_date: str = "2026-06-01", end_date: str = "2026-07-24", b
         logger.error(f"❌ BaoStock 登录失败: {lg.error_msg}")
         return
 
-    con = duckdb.connect(str(DB_PATH))
-    batch_records = []
+    batch_dfs = []
     t_start = time.time()
     total_saved = 0
 
@@ -111,36 +111,50 @@ def run_backfill(start_date: str = "2026-06-01", end_date: str = "2026-07-24", b
                     frequency="5",
                     adjustflag="3"
                 )
-                if rs.error_code == '0' and rs.data:
-                    for row in rs.data:
-                        raw_time = row[1]
-                        if len(raw_time) >= 14:
-                            fmt_dt = f"{raw_time[:4]}-{raw_time[4:6]}-{raw_time[6:8]} {raw_time[8:10]}:{raw_time[10:12]}:{raw_time[12:14]}"
-                        else:
-                            fmt_dt = f"{row[0]} 15:00:00"
-                        batch_records.append((
-                            code,
-                            name,
-                            fmt_dt,
-                            float(row[3] or 0.0),
-                            float(row[4] or 0.0),
-                            float(row[5] or 0.0),
-                            float(row[6] or 0.0),
-                            float(row[7] or 0.0)
-                        ))
+                if rs.error_code == '0':
+                    df = rs.get_data()
+                    if not df.empty:
+                        t_str = df['time'].astype(str)
+                        df['datetime'] = t_str.str.slice(0, 4) + '-' + t_str.str.slice(4, 6) + '-' + t_str.str.slice(6, 8) + ' ' + \
+                                         t_str.str.slice(8, 10) + ':' + t_str.str.slice(10, 12) + ':' + t_str.str.slice(12, 14)
+                        df['name'] = name
+                        df['code'] = code
+                        for col in ['open', 'high', 'low', 'close', 'volume']:
+                            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+                        batch_dfs.append(df[['code', 'name', 'datetime', 'open', 'high', 'low', 'close', 'volume']])
                 completed.add(code)
             except Exception as e:
                 logger.warning(f"⚠️ 拉取 {code} 异常: {e}")
 
-            if len(batch_records) >= 1000 or idx == len(pending):
-                if batch_records:
-                    con.executemany("""
-                    INSERT OR REPLACE INTO kline_5m 
-                    (code, name, datetime, open, high, low, close, volume)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, batch_records)
-                    total_saved += len(batch_records)
-                    batch_records = []
+            if (idx % 20 == 0) or (idx == len(pending)):
+                if batch_dfs:
+                    big_df = pd.concat(batch_dfs, ignore_index=True)
+                    for retry in range(5):
+                        con = None
+                        try:
+                            con = duckdb.connect(str(DB_PATH))
+                            con.execute("""
+                            INSERT OR REPLACE INTO kline_5m 
+                            (code, name, datetime, open, high, low, close, volume)
+                            SELECT code, name, datetime, open, high, low, close, volume FROM big_df
+                            """)
+                            break
+                        except Exception as e_db:
+                            logger.warning(f"⚠️ DuckDB 写入重试 ({retry+1}/5): {e_db}")
+                            time.sleep(1)
+                        finally:
+                            if con is not None:
+                                try:
+                                    con.close()
+                                except Exception:
+                                    pass
+                                del con
+                            import gc
+                            gc.collect()
+
+                    total_saved += len(big_df)
+                    del big_df
+                    batch_dfs = []
                 save_completed_codes(completed)
 
                 elapsed = time.time() - t_start
@@ -148,22 +162,37 @@ def run_backfill(start_date: str = "2026-06-01", end_date: str = "2026-07-24", b
                 rem_min = (len(pending) - idx) / max(rate, 0.01) / 60
                 logger.info(
                     f"进度: [{idx}/{len(pending)}] ({(idx/len(pending)*100):.1f}%) | "
-                    f"最新: {name}({code}) | 已入库: {total_saved} 条 | 速度: {rate:.1f}标的/秒 | 预计剩余: {rem_min:.1f}分"
+                    f"最新: {name}({code}) | 本轮已入库: {total_saved:,} 条 | 速度: {rate:.1f}标的/秒 | 预计剩余: {rem_min:.1f}分"
                 )
 
-            time.sleep(0.05)
+            time.sleep(0.02)
 
     finally:
-        if batch_records:
-            con.executemany("""
-            INSERT OR REPLACE INTO kline_5m 
-            (code, name, datetime, open, high, low, close, volume)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, batch_records)
+        if batch_dfs:
+            big_df = pd.concat(batch_dfs, ignore_index=True)
+            con = None
+            try:
+                con = duckdb.connect(str(DB_PATH))
+                con.execute("""
+                INSERT OR REPLACE INTO kline_5m 
+                (code, name, datetime, open, high, low, close, volume)
+                SELECT code, name, datetime, open, high, low, close, volume FROM big_df
+                """)
+                total_saved += len(big_df)
+            except Exception as e_final:
+                logger.error(f"⚠️ 最终批次保存失败: {e_final}")
+            finally:
+                if con is not None:
+                    try:
+                        con.close()
+                    except Exception:
+                        pass
+                    del con
+                import gc
+                gc.collect()
             save_completed_codes(completed)
-        con.close()
         bs.logout()
-        logger.info(f"🏆 回填作业完成！总新增入库: {total_saved} 条 5分钟记录！")
+        logger.info(f"🏆 回填作业完成！总新增入库: {total_saved:,} 条 5分钟记录！")
 
 
 if __name__ == "__main__":
