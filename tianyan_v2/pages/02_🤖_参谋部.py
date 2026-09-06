@@ -18,7 +18,8 @@ import pandas as pd
 from tianyan_v2.shared import (
     get_tianyan_engine,
     apply_tactical_theme,
-    render_top_control_bar
+    render_top_control_bar,
+    render_quota_badge
 )
 from core.ai_advisor import (
     query_ai_staff_report,
@@ -111,13 +112,40 @@ div[data-testid="stExpander"] summary p {
     line-height: 1.45 !important;
     margin: 0 !important;
 }
+div[data-testid="stPopover"] {
+    width: 100% !important;
+}
+div[data-testid="stPopover"] > button {
+    font-size: 11px !important;
+    padding: 2px 6px !important;
+    line-height: 1.15 !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    border-radius: 6px !important;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(15, 23, 42, 0.8) 100%) !important;
+    border: 1px solid rgba(16, 185, 129, 0.45) !important;
+    color: #6EE7B7 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.12) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+div[data-testid="stPopover"] > button:hover {
+    border-color: #10B981 !important;
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.3) !important;
+    color: #A7F3D0 !important;
+}
 </style>""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════
-# 2. 控制顶台：一键终裁 + 模型选择 + 军令阵列
+# 2. 控制顶台：一键终裁 + 模型选择 + 配额水库 + 军令阵列
 # ══════════════════════════════════════════════
-c_top_act, c_top_model, c_top_clear = st.columns([3, 4, 1], vertical_alignment="center")
+c_top_act, c_top_model, c_top_quota, c_top_clear = st.columns([2.8, 3.2, 2.5, 0.7], vertical_alignment="center")
 
 run_eight_dim = False
 qp_query = None
@@ -131,6 +159,9 @@ with c_top_act:
 with c_top_model:
     sel_m_label = st.selectbox("核心驱动模型", list(model_map.keys()), 0, key="core_model_sel", label_visibility="collapsed")
     selected_model_id = model_map[sel_m_label]
+
+with c_top_quota:
+    render_quota_badge(as_popover=True)
 
 with c_top_clear:
     if st.button("🗑️ 清空", help="清空当前标的推演记录", use_container_width=True):

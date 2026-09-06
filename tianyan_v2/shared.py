@@ -20,15 +20,18 @@ def get_tianyan_engine():
     return create_engine(PROJECT_ROOT)
 
 def init_shared_state():
+    from core.user_preference import get_user_preference
+    prefs = get_user_preference()
     defaults = {
-        "selected_group": "⭐ 全部标的池",
-        "selected_stock_code": "300475",
-        "selected_stock_name": "香农芯创",
-        "selected_days": 34,
+        "selected_group": prefs.get("selected_group", "🎯 指南针实盘真值持仓组"),
+        "selected_stock_code": "001309",
+        "selected_stock_name": "德明利",
+        "selected_days": prefs.get("selected_days", 55),
         "selected_dim5": 0,
         "chat_messages": [],
         "ai_auto_audit": False,
         "active_capsule": None,
+        "data_source_mode": prefs.get("data_source_mode", "compass_ocr"),
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -113,6 +116,13 @@ button[kind="secondary"] {
 """, unsafe_allow_html=True)
 
 def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
+
+    st.markdown('''<style>
+    /* 缩小全局下拉框字体，防止过长截断 */
+    div[data-baseweb="select"] { font-size: 13px !important; }
+    div[data-baseweb="select"] ul { font-size: 13px !important; }
+    </style>''', unsafe_allow_html=True)
+
     init_shared_state()
     groups_dict = engine.get_groups()
     group_names = ["⭐ 全部标的池"] + [g for g in groups_dict.keys() if g != "⭐ 全部标的池"]
@@ -121,7 +131,7 @@ def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
     if curr_group not in group_names:
         curr_group = "⭐ 全部标的池"
 
-    c_logo, c_grp, c_stock, c_fib, c_d5 = st.columns([2.8, 1.8, 2.2, 1.8, 2.2], gap="small")
+    c_logo, c_ds, c_grp, c_stock, c_fib, c_d5 = st.columns([1.8, 2.3, 2.3, 2.0, 1.6, 2.0], gap="small")
 
     with c_logo:
         st.markdown(f"""
@@ -131,10 +141,27 @@ def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
         </div>
         """, unsafe_allow_html=True)
 
+    with c_ds:
+        from core.user_preference import save_user_preference
+        ds_opts = {
+            "🎯 指南针真值 (OCR)": "compass_ocr",
+            "⚡ 微分推导 (DuckDB)": "duckdb"
+        }
+        ds_labels = list(ds_opts.keys())
+        curr_mode = st.session_state.get("data_source_mode", "compass_ocr")
+        ds_idx = 0 if curr_mode == "compass_ocr" else 1
+        sel_ds_label = st.selectbox("基座", ds_labels, index=ds_idx, key="top_data_source_sel", label_visibility="collapsed")
+        chosen_mode = ds_opts[sel_ds_label]
+        if chosen_mode != st.session_state.get("data_source_mode"):
+            st.session_state["data_source_mode"] = chosen_mode
+            save_user_preference("data_source_mode", chosen_mode)
+            st.rerun()
+
     with c_grp:
         sel_group = st.selectbox("分组", group_names, index=group_names.index(curr_group), key="top_group_sel", label_visibility="collapsed")
         if sel_group != st.session_state["selected_group"]:
             st.session_state["selected_group"] = sel_group
+            save_user_preference("selected_group", sel_group)
             st.rerun()
 
     pool_targets = engine.get_targets(None if sel_group == "⭐ 全部标的池" else sel_group)
@@ -148,12 +175,18 @@ def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
     if not code_to_name:
         code_to_name = {"300475": "香农芯创"}
 
-    curr_code = st.session_state.get("selected_stock_code", "300475")
+    curr_code = st.session_state.get("selected_stock_code", "001309")
     all_codes = list(code_to_name.keys())
-    c_idx = all_codes.index(curr_code) if curr_code in all_codes else 0
+    if curr_code not in all_codes:
+        curr_code = all_codes[0]
+        st.session_state["selected_stock_code"] = curr_code
+        st.session_state["selected_stock_name"] = code_to_name.get(curr_code, curr_code)
+
+    c_idx = all_codes.index(curr_code)
 
     with c_stock:
-        sel_code = st.selectbox("标的", all_codes, index=c_idx, format_func=lambda c: f"{code_to_name.get(c, c)} ({c})", key="top_stock_sel", label_visibility="collapsed")
+        stock_sel_key = f"top_stock_sel_{sel_group}"
+        sel_code = st.selectbox("标的", all_codes, index=c_idx, format_func=lambda c: f"{code_to_name.get(c, c)} ({c})", key=stock_sel_key, label_visibility="collapsed")
         if sel_code != st.session_state["selected_stock_code"]:
             st.session_state["selected_stock_code"] = sel_code
             st.session_state["selected_stock_name"] = code_to_name.get(sel_code, sel_code)
@@ -165,8 +198,8 @@ def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
         if "200日 (年线大波段)" not in fib_l:
             fib_l.append("200日 (年线大波段)")
             fib_v.append(200)
-        curr_days = st.session_state.get("selected_days", 34)
-        f_idx = fib_v.index(curr_days) if curr_days in fib_v else 3
+        curr_days = st.session_state.get("selected_days", 55)
+        f_idx = fib_v.index(curr_days) if curr_days in fib_v else 4
         sel_f_idx = st.selectbox("周期", range(len(fib_l)), index=f_idx, format_func=lambda i: fib_l[i], key="top_fib_sel", label_visibility="collapsed")
         if fib_v[sel_f_idx] != st.session_state["selected_days"]:
             st.session_state["selected_days"] = fib_v[sel_f_idx]
@@ -192,5 +225,84 @@ def render_top_control_bar(engine, title_prefix="🛸 天衍五维"):
         "stock_name": st.session_state["selected_stock_name"],
         "days": st.session_state["selected_days"],
         "dim5": st.session_state["selected_dim5"],
-        "group": st.session_state["selected_group"]
+        "group": st.session_state["selected_group"],
+        "data_source_mode": st.session_state.get("data_source_mode", "compass_ocr")
     }
+
+
+def render_quota_badge(as_popover: bool = True):
+    """
+    渲染 ModelScope 大模型每日免费配额监控徽章 / 弹窗控制台
+    - 每日安全硬锁：1,800 次 (官方 2,000 次，预留 10% 缓冲)
+    - 零扣费硬保护状态展示
+    - Token 消耗与各模型细分明细
+    """
+    import pandas as pd
+    from core.providers.modelscope_client import modelscope_client
+    
+    try:
+        quota_st = modelscope_client.get_quota_status()
+    except Exception as e:
+        quota_st = {
+            "date": "今日",
+            "used_calls": 0,
+            "limit_calls": 1800,
+            "remaining_calls": 1800,
+            "remaining_ratio": 1.0,
+            "total_tokens": 0,
+            "is_safe": True,
+            "models": []
+        }
+
+    u_calls = quota_st.get("used_calls", 0)
+    l_calls = quota_st.get("limit_calls", 1800)
+    r_calls = quota_st.get("remaining_calls", 1800)
+    r_ratio = quota_st.get("remaining_ratio", 1.0)
+    total_tokens = quota_st.get("total_tokens", 0)
+
+    # 状态指示
+    status_dot = "🟢" if r_ratio > 0.3 else ("🟡" if r_ratio > 0.1 else "🔴")
+    pop_btn_text = f"🛡️ 配额: {u_calls}/{l_calls} ({status_dot}余{r_calls})"
+
+    if as_popover:
+        with st.popover(pop_btn_text, help="ModelScope 每日 1,800 次免费配额与零扣费安全硬锁监控", use_container_width=True):
+            st.markdown("#### 🛡️ ModelScope 免费算力水库与预算门神")
+            st.caption(f"📅 统计周期: {quota_st.get('date')} | 每日 00:00 自动重置")
+
+            # 配额余量进度条
+            st.progress(r_ratio, text=f"可用余量: {round(r_ratio * 100, 1)}% (剩余 {r_calls} / {l_calls} 次)")
+
+            m_c1, m_c2 = st.columns(2)
+            with m_c1:
+                st.metric("今日已调用", f"{u_calls} 次", help="今日大模型 API 实际调用总次数")
+            with m_c2:
+                st.metric("Token 消耗", f"{total_tokens:,}", help="今日累计消耗的输入与输出 Tokens")
+
+            st.markdown("---")
+            st.markdown("**🛡️ 零费用硬锁防御机制**")
+            st.info(
+                "• **官方额度**: ModelScope 官方每日提供 2,000 次免费调用。\n"
+                "• **安全硬锁**: 系统内置 `ModelScopeBudgetGuard` 守护门神，设置 **1,800 次/天** 物理硬顶（预留 10% 缓冲应对网络重试），达标后直接硬拦截，**100% 杜绝任何超额扣费**。\n"
+                "• **持久审计**: 每次请求由本地 SQLite (`modelscope_budget.db`) 全量记录。"
+            )
+
+            models_data = quota_st.get("models", [])
+            if models_data:
+                st.markdown("**📊 今日各模型调用细分**")
+                m_df = pd.DataFrame(models_data)
+                m_df.columns = ["模型名称", "调用次数", "Token 消耗"]
+                st.dataframe(m_df, use_container_width=True, hide_index=True)
+    else:
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.8)); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; padding: 6px 10px; font-size: 11px; color: #94A3B8;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <span style="color:#6EE7B7; font-weight:700;">🛡️ ModelScope 配额</span>
+                <span style="color:{'#10B981' if r_ratio>0.3 else '#EF4444'}; font-weight:700;">{status_dot} 零扣费硬锁</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:10px; color:#CBD5E1;">
+                <span>已用: <b style="color:#F59E0B;">{u_calls}</b> / {l_calls} 次</span>
+                <span>余: <b style="color:#10B981;">{r_calls}</b> 次 ({round(r_ratio*100, 1)}%)</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+

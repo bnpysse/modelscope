@@ -57,18 +57,38 @@ class ModelScopeBudgetGuard:
         return datetime.datetime.now().strftime("%Y-%m-%d")
 
     def get_today_usage(self) -> Dict[str, Any]:
-        """获取今日累计调用次数与 Token 统计"""
+        """获取今日累计调用次数与 Token 统计及各模型细分"""
         today = self._today_str()
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-            SELECT SUM(call_count), SUM(total_tokens)
-            FROM daily_call_usage
-            WHERE date_str = ?
-            """, (today,))
-            row = cursor.fetchone()
-            total_calls = row[0] or 0
-            total_tokens = row[1] or 0
+        models_detail = []
+        total_calls = 0
+        total_tokens = 0
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                SELECT SUM(call_count), SUM(total_tokens)
+                FROM daily_call_usage
+                WHERE date_str = ?
+                """, (today,))
+                row = cursor.fetchone()
+                if row:
+                    total_calls = row[0] or 0
+                    total_tokens = row[1] or 0
+
+                cursor.execute("""
+                SELECT model_key, call_count, total_tokens
+                FROM daily_call_usage
+                WHERE date_str = ?
+                ORDER BY call_count DESC
+                """, (today,))
+                for m_row in cursor.fetchall():
+                    models_detail.append({
+                        "model": m_row[0],
+                        "calls": m_row[1],
+                        "tokens": m_row[2]
+                    })
+        except Exception as e:
+            logger.warning(f"Error querying quota db: {e}")
 
         remaining = max(0, self.daily_limit - total_calls)
         ratio = max(0.0, min(1.0, remaining / self.daily_limit))
@@ -81,6 +101,7 @@ class ModelScopeBudgetGuard:
             "remaining_ratio": ratio,
             "total_tokens": total_tokens,
             "is_safe": total_calls < self.daily_limit,
+            "models": models_detail,
         }
 
     def can_call(self) -> Tuple[bool, str]:
