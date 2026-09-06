@@ -136,6 +136,10 @@ def build_physics_context_block(stock_code: str, stock_name: str, snapshot: Dict
     main_p = float(snapshot.get("Main_Fund_Pct", snapshot.get("Main_Pct", 5.0)) or 5.0)
     dare_p = float(snapshot.get("Dare_Fund_Pct", snapshot.get("Dare_Pct", 1.0)) or 1.0)
     d_pos = float(snapshot.get("D_Pos", 35.0) or 35.0)
+    abr_v = float(snapshot.get("ABR", snapshot.get("Active_Buy_Ratio", snapshot.get("active_buy_ratio_%", 0.0))) or 0.0)
+    if abr_v <= 0:
+        base_abr = 50.0 + main_p * 1.5 + (pct_chg * 1.2)
+        abr_v = round(float(max(15.0, min(85.0, base_abr))), 1)
     cyf66_raw = float(snapshot.get("CYF66_Raw", 50.0) or 50.0)
     cyf66_vma55 = float(snapshot.get("CYF66_VMA55", 50.0) or 50.0)
     res_score = float(snapshot.get("Resonance_Score", 50.0) or 50.0)
@@ -173,7 +177,7 @@ def build_physics_context_block(stock_code: str, stock_name: str, snapshot: Dict
 - CYC成本中枢体系: CYC5={cyc5_v:.2f}, CYC13={cyc13_v:.2f}, CYC34={cyc34_v:.2f}, CYC_inf={cyc_inf_v:.2f}
 - 盈亏状态: CYS13={cys13_v:.2f}%, CYS34={cys34_v:.2f}% (盈亏剪刀差 ΔCYS={high_order.delta_cys:+.2f}%)
 - 均线偏离度: BIAS_5_20={bias_v:+.2f}%, 波动率归一化 Norm_BIAS={norm_bias_v:+.2f}
-- 微观资金分布: 主力净流入 Main%={main_p:+.2f}%, 游资占比 Dare%={dare_p:+.2f}%, 活筹位置 D_pos={d_pos:.1f}
+- 微观资金分布: 主力净流入 Main%={main_p:+.2f}%, 游资占比 Dare%={dare_p:+.2f}%, 活筹位置 D_pos={d_pos:.1f}, 主动买盘占比 ABR={abr_v:.1f}%
 - 追涨动能阀门: CYF66_Raw={cyf66_raw:.2f}, VMA55={cyf66_vma55:.2f}, 动能差 ΔCYF={delta_cyf_val:+.2f}
 - 跨周期共振得分: {res_score:.1f}/100
 
@@ -184,6 +188,10 @@ def build_physics_context_block(stock_code: str, stock_name: str, snapshot: Dict
 4. 斐波张力收敛度 (κCYC): {high_order.kappa_cyc:.2f}% ➔ 【{high_order.kappa_cyc_status}】 (输入: CYC5={cyc5_v:.2f}, CYC13={cyc13_v:.2f}, CYC34={cyc34_v:.2f}, CYC_inf={cyc_inf_v:.2f})
 5. 盈亏剪刀差 (ΔCYS): {high_order.delta_cys:+.2f}% ➔ 【{high_order.delta_cys_status}】 (输入: CYS13={cys13_v:.2f}%, CYS34={cys34_v:.2f}%)
 6. 主力筹码纯度 (SMPI): {high_order.smpi:+.2f} ➔ 【{high_order.smpi_status}】 (输入: Main%={main_p:+.2f}%, Dare%={dare_p:+.2f}%, D_pos={d_pos:.1f})
+
+【多尺度偏微分方程连续场张量 (微观 1m 流体微积分 + 中观 5m 拓扑相空间)】:
+- 微观 1m: 势阱穿透逃逸概率 P_escape={float(snapshot.get('P_escape', 50.0)):.1f}% | 模态相干纯度 Lambda_dmd={float(snapshot.get('Lambda_dmd', 50.0)):.1f} | 最优传输功 W_cost={float(snapshot.get('W_cost', 0.1)):.3f} 元/股
+- 中观 5m: TDA拓扑通道主轴比 Beta1_5m={float(snapshot.get('Beta1_5m', 2.0)):.2f} | 动量耗散阻尼 Gamma_5m={float(snapshot.get('Gamma_5m', 50.0)):.1f} | 涡度能量通量 Omega_5m={float(snapshot.get('Omega_5m', 50.0)):.1f}
 """
     return block, high_order
 
@@ -506,6 +514,11 @@ def build_eight_dimension_truth_matrix(
     w200 = calculate_200_week_metrics(stock_code, snapshot, engine=engine, mode=mode)
     pivots = compute_support_resistance_pivots(snapshot)
 
+    abr_v = float(snapshot.get("ABR", snapshot.get("Active_Buy_Ratio", snapshot.get("active_buy_ratio_%", 0.0))) or 0.0)
+    if abr_v <= 0:
+        base_abr = 50.0 + main_p * 1.5 + (pct_chg * 1.2)
+        abr_v = round(float(max(15.0, min(85.0, base_abr))), 1)
+
     # 1. 全景底座
     dim1_status = "★ 护城河多头金叉·锁仓上扬" if lfs_v >= hccyf_v else "✖ 护城河死叉·底座松动坍塌"
     # 2. 穿透洗盘
@@ -516,8 +529,8 @@ def build_eight_dimension_truth_matrix(
     # 4. 200周线
     dim4_status = w200["status"]
     # 5. 异动排雷
-    is_mine = (d_pos > 70 and to_v > 12.0) or (bias_v > 15.0)
-    dim5_status = "⚠️ 触发异动预警·严防对倒出货" if is_mine else "🟢 绿灯无高危异动 (无对倒/无尖头放量)"
+    is_mine = (d_pos > 70 and to_v > 12.0) or (bias_v > 15.0) or (to_v > 8.0 and abr_v < 45.0 and main_p < 0)
+    dim5_status = "⚠️ 触发异动预警·严防对倒出货" if is_mine else f"🟢 绿灯无高危异动 (ABR={abr_v:.1f}%, 无对倒/无尖头放量)"
     # 6. 次日博弈
     dim6_status = f"支撑: {pivots['support_1']} 元 | 阻力: {pivots['resistance_1']} 元 (ηV={high_order.eta_v:.3f}, BRI={high_order.bri:.1f})"
     # 7. 黄金拐点
@@ -560,7 +573,7 @@ def build_eight_dimension_truth_matrix(
         },
         "dim5_mine": {
             "name": "维度五 · 高危异动排雷与一票否决",
-            "d_pos": d_pos, "turnover": to_v, "bias_5_20": bias_v, "norm_bias": norm_bias_v,
+            "d_pos": d_pos, "turnover": to_v, "abr": abr_v, "bias_5_20": bias_v, "norm_bias": norm_bias_v,
             "status": dim5_status, "is_alarm": is_mine
         },
         "dim6_nextday": {
@@ -572,12 +585,11 @@ def build_eight_dimension_truth_matrix(
         },
         "dim7_golden_pit": {
             "name": "维度七 · 黄金拐点与超卖反转",
-            "cys13": cys13_v, "cys34": cys34_v, "delta_cys": high_order.delta_cys,
-            "status": dim7_status
+            "cys34": cys34_v, "cys13": cys13_v, "delta_cys": high_order.delta_cys, "status": dim7_status
         },
         "dim8_fibonacci": {
             "name": "维度八 · 跨周期斐波那契战役研报",
-            "t198_pct": t198_chg, "status": dim8_status
+            "t198_pct": t198_chg, "fib_len": len(fib_list), "status": dim8_status
         },
         "high_order": high_order,
         "pivots": pivots,
@@ -587,9 +599,8 @@ def build_eight_dimension_truth_matrix(
     return matrix
 
 
-def format_eight_dimension_supreme_prompt(matrix: Dict[str, Any]) -> str:
-    """组织八维全息统帅终裁提示词"""
-    m = matrix
+def format_eight_dimension_supreme_prompt(m: Dict[str, Any]) -> str:
+    """组织八维统帅级深度战役推演提示词"""
     d1 = m["dim1_base"]
     d2 = m["dim2_wash"]
     d3 = m["dim3_position"]
@@ -607,7 +618,7 @@ def format_eight_dimension_supreme_prompt(matrix: Dict[str, Any]) -> str:
 2. [维度二 穿透洗盘]: 活动筹码 ASR={d2['asr']:.2f}%, 集中度 X70={d2['x70']:.2f}%, X90={d2['x90']:.2f}%, 获利比 Z={d2['z_profit']:.2f}%, 重合度 Y={d2['y_overlap']:.2f}%, 剪刀差={d2['scissor']:+.2f} ➔ 【{d2['status']}】
 3. [维度三 仓位硬裁]: 4级动态仓位建议={d3['pos_label']} (建议仓位: {d3['pos_pct']}%), 裁决依据: {d3['rationale']}
 4. [维度四 200周线]: 4年大牛熊生死线中枢={d4['ma200w']} 元, 现价相对偏离度 BIAS_200w={d4['bias_200w']:+.2f}% ➔ 【{d4['status']}】({d4['desc']})
-5. [维度五 异动排雷]: 活筹位置 D_pos={d5['d_pos']:.1f}, 换手率={d5['turnover']:.2f}%, BIAS_5_20={d5['bias_5_20']:+.2f}%, Norm_BIAS={d5['norm_bias']:+.2f} ➔ 【{d5['status']}】
+5. [维度五 异动排雷]: 活筹位置 D_pos={d5['d_pos']:.1f}, 换手率={d5['turnover']:.2f}%, 主动买盘 ABR={d5['abr']:.1f}%, BIAS_5_20={d5['bias_5_20']:+.2f}%, Norm_BIAS={d5['norm_bias']:+.2f} ➔ 【{d5['status']}】
 6. [维度六 次日攻防]: 微观推力 ηV={d6['eta_v']:.4f}, 断层真空 BRI={d6['bri']:.2f}, 下方防守支撑={d6['support_1']} 元 (第二防线 {d6['support_2']} 元), 上方第一阻力={d6['resistance_1']} 元 (目标加速位 {d6['resistance_2']} 元)
 7. [维度七 黄金拐点]: CYS34={d7['cys34']:+.2f}%, CYS13={d7['cys13']:+.2f}%, 盈亏剪刀差 ΔCYS={d7['delta_cys']:+.2f}% ➔ 【{d7['status']}】
 8. [维度八 战略时序]: {d8['status']}

@@ -479,7 +479,10 @@ class OmniEngine:
                                 "P_escape": float(row.get("P_escape", 0.0)),
                                 "Lambda_dmd": float(row.get("Lambda_dmd", 0.0)),
                                 "W_cost": float(row.get("W_cost", 0.0)),
-                                "vwap": float(row.get("vwap", close_val))
+                                "vwap": float(row.get("vwap", close_val)),
+                                "Beta1_5m": float(row.get("Beta1_5m", 2.0)),
+                                "Gamma_5m": float(row.get("Gamma_5m", 50.0)),
+                                "Omega_5m": float(row.get("Omega_5m", 50.0))
                             }
                             return snap_dict
                     except Exception:

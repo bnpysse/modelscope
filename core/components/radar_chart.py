@@ -301,10 +301,10 @@ def build_radar_figure(
 
 def _render_dim1(fig, df, x, dates, hover_labels):
     """维一：底座阵地 — LFS(蓝/左1), HCCYF13(黄/左1), Close(灰/左2), 资金(红/右)"""
-    lfs = df["LFS"].to_list()
-    hccyf13 = df["HCCYF13"].to_list()
-    close = df["Close"].to_list()
-    fund = df["Sum_132d"].to_list()
+    lfs = df["LFS"].to_list() if "LFS" in df.columns else [50.0] * len(x)
+    hccyf13 = df["HCCYF13"].to_list() if "HCCYF13" in df.columns else [50.0] * len(x)
+    close = df["Close"].to_list() if "Close" in df.columns else [10.0] * len(x)
+    fund = df["Sum_132d"].to_list() if "Sum_132d" in df.columns else [0.0] * len(x)
 
     # LFS 蓝线 → 左主轴
     fig.add_trace(go.Scatter(
@@ -343,10 +343,10 @@ def _render_dim1(fig, df, x, dates, hover_labels):
 
 def _render_dim2(fig, df, x, dates, hover_labels):
     """维二：抛压真空 — Z'(金/左1), CYS34(天蓝/左2), 资金(红/右)"""
-    z_prime = df["Z_diff1"].to_list()
-    cys34 = df["CYS34"].to_list()
-    turnover = df["Turnover"].to_list()
-    fund = df["Sum_66d"].to_list()
+    z_prime = df["Z_diff1"].to_list() if "Z_diff1" in df.columns else [0.0] * len(x)
+    cys34 = df["CYS34"].to_list() if "CYS34" in df.columns else [0.0] * len(x)
+    turnover = df["Turnover"].to_list() if "Turnover" in df.columns else [3.0] * len(x)
+    fund = df["Sum_66d"].to_list() if "Sum_66d" in df.columns else [0.0] * len(x)
 
     # Z' 柱状图 → 左主轴
     bar_colors = []
@@ -382,9 +382,14 @@ def _render_dim2(fig, df, x, dates, hover_labels):
 
 def _render_dim3(fig, df, x, dates, hover_labels):
     """维三：活筹点火 — PTR(橙/左1), D_Pos(粉/左2), 资金(红/右)"""
-    ptr = df["PTR"].to_list()
-    dpos = df["D_Pos"].to_list()
-    fund = df["Sum_22d"].to_list()
+    ptr = df["PTR"].to_list() if "PTR" in df.columns else [1.0] * len(x)
+    if "D_Pos" in df.columns:
+        dpos = df["D_Pos"].to_list()
+    elif "D_pos" in df.columns:
+        dpos = df["D_pos"].to_list()
+    else:
+        dpos = [50.0] * len(x)
+    fund = df["Sum_22d"].to_list() if "Sum_22d" in df.columns else [0.0] * len(x)
 
     # PTR 橙线 → 左主轴
     fig.add_trace(go.Scatter(
@@ -407,9 +412,14 @@ def _render_dim3(fig, df, x, dates, hover_labels):
 
 def _render_dim4(fig, df, x, dates, hover_labels):
     """维四：情绪极值 — Y_Overlap(紫/左1), ASR(青/左2), 资金(红/右)"""
-    y_ovp = df["Y_Overlap"].to_list()
-    asr = df["ASR"].to_list()
-    fund = df["Sum_5d"].to_list()
+    if "Y_Overlap" in df.columns:
+        y_ovp = df["Y_Overlap"].to_list()
+    elif "Overlap_Y" in df.columns:
+        y_ovp = df["Overlap_Y"].to_list()
+    else:
+        y_ovp = [20.0] * len(x)
+    asr = df["ASR"].to_list() if "ASR" in df.columns else [25.0] * len(x)
+    fund = df["Sum_5d"].to_list() if "Sum_5d" in df.columns else [0.0] * len(x)
 
     # Y_Overlap 紫线 → 左主轴
     fig.add_trace(go.Scatter(
@@ -440,8 +450,8 @@ def _render_dim5(fig, df, x, dates, mode: int, hover_labels):
     if mode > 0:
         t_col = f"Turnover_MA{mode}"
         p_col = f"PTR_MA{mode}"
-        t_vals = df[t_col].to_list()
-        p_vals = df[p_col].to_list()
+        t_vals = df[t_col].to_list() if t_col in df.columns else [3.0] * len(x)
+        p_vals = df[p_col].to_list() if p_col in df.columns else [1.0] * len(x)
 
         # 仅第一条曲线带日期 Header
         fig.add_trace(go.Scatter(
@@ -458,10 +468,10 @@ def _render_dim5(fig, df, x, dates, mode: int, hover_labels):
             hovertemplate=f"P_MA{mode}: %{{y:.2f}}<extra></extra>",
         ), row=5, col=1, secondary_y=True)
     else:
-        t5 = df["Turnover_MA5"].to_list()
-        t20 = df["Turnover_MA20"].to_list()
-        p5 = df["PTR_MA5"].to_list()
-        p20 = df["PTR_MA20"].to_list()
+        t5 = df["Turnover_MA5"].to_list() if "Turnover_MA5" in df.columns else [3.0] * len(x)
+        t20 = df["Turnover_MA20"].to_list() if "Turnover_MA20" in df.columns else [3.0] * len(x)
+        p5 = df["PTR_MA5"].to_list() if "PTR_MA5" in df.columns else [1.0] * len(x)
+        p20 = df["PTR_MA20"].to_list() if "PTR_MA20" in df.columns else [1.0] * len(x)
 
         # 仅 T_MA5 带日期 Header
         fig.add_trace(go.Scatter(

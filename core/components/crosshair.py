@@ -48,7 +48,12 @@ def render_radar_with_hud(
     ]
     # 过滤存在的列
     existing_cols = [c for c in hud_cols if c in df.columns]
-    rows_data = df.select(existing_cols).to_dicts()
+    if hasattr(df, "to_dicts"):
+        # Polars DataFrame
+        rows_data = df.select(existing_cols).to_dicts()
+    else:
+        # Pandas DataFrame
+        rows_data = df[existing_cols].to_dict(orient="records")
     rows_json = json.dumps(rows_data, ensure_ascii=False, default=str)
 
     total = len(rows_data)
