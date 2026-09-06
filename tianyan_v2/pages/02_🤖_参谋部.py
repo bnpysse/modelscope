@@ -95,6 +95,21 @@ div[data-testid="stTabs"] button {
 div[data-testid="stVerticalBlock"] > div:has(div[data-testid="stContainer"]) {
     margin-top: -4px !important;
 }
+div[data-testid="stExpander"] summary {
+    font-size: 13px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.45 !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+}
+div[data-testid="stExpander"] summary p {
+    font-size: 13px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.45 !important;
+    margin: 0 !important;
+}
 </style>""", unsafe_allow_html=True)
 
 
@@ -252,7 +267,7 @@ elif qp_query:
                 selected_model=selected_model_id
             )
             report_item = {
-                "title": f"💬 {qp_query[:22]}...",
+                "title": f"💬 {qp_query}",
                 "content": res["content"],
                 "thinking": res.get("thinking", ""),
                 "model_used": res.get("model_used", selected_model_id),
@@ -278,7 +293,11 @@ with tab_briefing:
     with st.container(height=530):
         active_rep = st.session_state.get(active_report_key)
         if active_rep:
-            st.markdown(f"#### {active_rep['title']}")
+            st.markdown(f"""
+            <div style="background: rgba(30, 41, 59, 0.6); border-left: 3px solid #38BDF8; border-radius: 4px; padding: 6px 12px; margin-bottom: 10px; font-size: 13px; font-weight: 600; color: #F1F5F9; line-height: 1.45;">
+                {active_rep['title']}
+            </div>
+            """, unsafe_allow_html=True)
             if active_rep.get("thinking"):
                 with st.expander("💡 参谋部 CoT 思考推演链 (大模型内生辩证反思)", expanded=False):
                     st.markdown(f"```text\n{active_rep['thinking']}\n```")
