@@ -39,9 +39,9 @@ DB_PATH = DATA_DIR / "tianyan_market_multiscale.duckdb"
 SNAPSHOT_PATH = DATA_DIR / "full_market_snapshot.parquet"
 LOG_FILE = BASE_DIR / "nightly_pipeline.log"
 
-# DSW 生产机目标配置 (通过 cpolar 隧道直连)
-DSW_HOST = "10.tcp.cpolar.top"
-DSW_PORT = 10128
+# DSW 生产机目标配置 (通过 DSW->N100 高速反向专线 10022 直连)
+DSW_HOST = "127.0.0.1"
+DSW_PORT = 10022
 DSW_USER = "root"
 DSW_REMOTE_PATH = "/mnt/workspace/quant_data/full_market_snapshot.parquet"
 
