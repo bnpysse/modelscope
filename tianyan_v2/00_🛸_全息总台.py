@@ -7,11 +7,32 @@
   3. 全局参数总线驱动，跨页面与战备库、参谋部实时联动
 """
 
+import os
 import sys
 from pathlib import Path
 
+# ── ModelScope 创空间 Gradio 模式自愈与自动引导 ──
+try:
+    from streamlit.runtime import exists as _st_exists
+    _is_in_streamlit = _st_exists()
+except Exception:
+    _is_in_streamlit = False
+
+if not _is_in_streamlit and "streamlit" not in Path(sys.argv[0]).name:
+    port = os.environ.get("PORT", "7860")
+    print(f"🚀 [Studio Bootstrap] 检测到以 python3 直接运行，正在无缝启动 Streamlit 服务 (端口 {port})...")
+    cmd = [
+        sys.executable, "-m", "streamlit", "run",
+        str(Path(__file__).resolve()),
+        f"--server.port={port}",
+        "--server.address=0.0.0.0",
+        "--server.headless=true",
+        "--browser.gatherUsageStats=false"
+    ]
+    os.execv(sys.executable, cmd)
+
 CURRENT_FILE = Path(__file__).resolve()
-PROJECT_ROOT = CURRENT_FILE.parent.parent
+PROJECT_ROOT = CURRENT_FILE.parent if (CURRENT_FILE.parent / "core").exists() else CURRENT_FILE.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

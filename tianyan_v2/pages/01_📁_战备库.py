@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 CURRENT_FILE = Path(__file__).resolve()
-PROJECT_ROOT = CURRENT_FILE.parent.parent.parent
+PROJECT_ROOT = CURRENT_FILE.parent if (CURRENT_FILE.parent / "core").exists() else (CURRENT_FILE.parent.parent if (CURRENT_FILE.parent.parent / "core").exists() else CURRENT_FILE.parent.parent.parent)
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -124,24 +124,29 @@ with st.expander("⚙️ 自选股票池与多分组管理 (自主新建分组 /
             with c_act1:
                 if st.button("💾 保存名称修改", key=f"save_names_{edit_group}", type="primary", use_container_width=True):
                     changed = 0
-                    for _, r in edited_res.iterrows():
-                        orig = next((s for s in group_stocks if s.code == r["代码"]), None)
-                        if orig and orig.name != r["名称"]:
-                            engine.update_stock_name(r["代码"], edit_group, r["名称"])
-                            changed += 1
+                    if edited_res is not None and isinstance(edited_res, pd.DataFrame):
+                        for _, r in edited_res.iterrows():
+                            orig = next((s for s in group_stocks if s.code == r["代码"]), None)
+                            if orig and orig.name != r["名称"]:
+                                engine.update_stock_name(r["代码"], edit_group, r["名称"])
+                                changed += 1
                     if changed > 0:
                         st.success(f"已成功更新 {changed} 只标的名称！")
                     else:
                         st.info("标的名称未发生改变。")
                     st.rerun()
             with c_act2:
-                del_targets = edited_res[edited_res["移出"] == True]
-                del_cnt = len(del_targets)
+                del_cnt = 0
+                del_targets = pd.DataFrame()
+                if edited_res is not None and isinstance(edited_res, pd.DataFrame) and "移出" in edited_res.columns:
+                    del_targets = edited_res[edited_res["移出"] == True]
+                    del_cnt = len(del_targets)
                 if st.button(f"🗑️ 移出选中标的 ({del_cnt})", key=f"del_stocks_{edit_group}", disabled=(del_cnt == 0), use_container_width=True):
-                    for _, r in del_targets.iterrows():
-                        engine.remove_stock_from_group(r["代码"], edit_group)
-                    st.success(f"已成功从【{edit_group}】移出 {del_cnt} 只标的！")
-                    st.rerun()
+                    if not del_targets.empty:
+                        for _, r in del_targets.iterrows():
+                            engine.remove_stock_from_group(r["代码"], edit_group)
+                        st.success(f"已成功从【{edit_group}】移出 {del_cnt} 只标的！")
+                        st.rerun()
             with c_act3:
                 if st.button(f"🧹 清空【{edit_group}】所有标的", key=f"clear_all_{edit_group}", use_container_width=True):
                     engine.clear_group(edit_group)
@@ -164,8 +169,12 @@ with c_fib_filter:
         key="fib_timeframe_sel"
     )
 
-snapshot = engine.get_latest_snapshot(stock_code, mode=ds_mode, allow_network=True) or {}
-fib_matrix = engine.get_fibonacci_depth_matrix(stock_code, mode=ds_mode, allow_network=True)
+try:
+    snapshot = engine.get_latest_snapshot(stock_code, mode=ds_mode, allow_network=True) or {}
+    fib_matrix = engine.get_fibonacci_depth_matrix(stock_code, mode=ds_mode, allow_network=True)
+except Exception as e_snap:
+    snapshot = {}
+    fib_matrix = []
 if fib_matrix:
     fib_df = pd.DataFrame(fib_matrix)
     
@@ -258,6 +267,10 @@ import duckdb
 parquet_path = PROJECT_ROOT / "quant_data" / "full_market_snapshot.parquet"
 if not parquet_path.exists():
     parquet_path = Path("/mnt/workspace/quant_data/full_market_snapshot.parquet")
+if not parquet_path.exists():
+    parquet_path = Path("/home/studio/PROJECT/quant_data/full_market_snapshot.parquet")
+if not parquet_path.exists():
+    parquet_path = Path("quant_data/full_market_snapshot.parquet")
 
 pool_df = pd.DataFrame()
 
@@ -494,8 +507,11 @@ def render_selectable_radar_tab(tab_df: pd.DataFrame, tab_name: str, pool_group_
         key=f"editor_{tab_key}_{board_choice}_{current_mode}"
     )
 
-    chosen = edited[edited["入选"] == True]
-    cnt = len(chosen)
+    chosen = pd.DataFrame()
+    cnt = 0
+    if edited is not None and isinstance(edited, pd.DataFrame) and "入选" in edited.columns:
+        chosen = edited[edited["入选"] == True]
+        cnt = len(chosen)
 
     st.markdown("<br>", unsafe_allow_html=True)
     c_btn, c_tip = st.columns([4.5, 5.5])

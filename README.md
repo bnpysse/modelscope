@@ -1,3 +1,12 @@
+---
+title: Tianyan Cockpit
+emoji: 🛸
+sdk: streamlit
+sdk_version: 1.40.1
+app_file: app.py
+pinned: false
+---
+
 # 天眼全息智导系统 V7.0 (ModelScope Edition)
 
 🛰️ **基于 ModelScope 免费金融大模型与移动成本分布 (MCD) 物理场微积分的高吞吐量化战术体系**
