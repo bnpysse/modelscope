@@ -378,18 +378,22 @@ SYSTEM_PROMPT_EIGHT_DIMENSION_SUPREME = """# Role: A股新质生产力量化战�
 """
 
 
-def calculate_200_week_metrics(stock_code: str, snapshot: Dict[str, Any], engine=None) -> Dict[str, Any]:
+def calculate_200_week_metrics(stock_code: str, snapshot: Dict[str, Any], engine=None, mode: str = "compass_ocr") -> Dict[str, Any]:
     """计算 200 周生死线 (长达 4 年的牛熊大中枢) 及偏离度"""
-    close_p = float(snapshot.get("Close", 10.0) or 10.0)
+    close_p = float(snapshot.get("Close", 0.0) or 0.0)
     ma200w_val = None
     data_source_desc = "历史时序长周期均线"
     
     if engine is not None:
         try:
-            df = engine.get_stock_data(stock_code)
+            df = engine.get_stock_data(stock_code, mode=mode, allow_network=True)
+            if df.is_empty() and mode != "duckdb":
+                df = engine.get_stock_data(stock_code, mode="duckdb", allow_network=True)
             if not df.is_empty() and "Close" in df.columns:
                 c_series = df["Close"].drop_nulls()
                 total_len = len(c_series)
+                if close_p <= 0 and total_len > 0:
+                    close_p = float(c_series[-1])
                 if total_len >= 950:
                     ma200w_val = float(c_series.tail(1000).mean())
                     data_source_desc = "1000日(约200周)实测均线中枢"
@@ -403,9 +407,16 @@ def calculate_200_week_metrics(stock_code: str, snapshot: Dict[str, Any], engine
             pass
             
     if ma200w_val is None or ma200w_val <= 0:
-        cyc_inf = float(snapshot.get("CYC_Infinity", snapshot.get("CYC_inf", close_p * 0.92)) or (close_p * 0.92))
-        ma200w_val = cyc_inf
-        data_source_desc = "CYC_inf 无穷成本均线等效中枢"
+        cyc_inf = float(snapshot.get("CYC_Infinity", snapshot.get("CYC_inf", 0.0)) or 0.0)
+        if cyc_inf > 0:
+            ma200w_val = cyc_inf
+            data_source_desc = "CYC_inf 无穷成本均线等效中枢"
+        else:
+            ma200w_val = close_p if close_p > 0 else 10.0
+            data_source_desc = "现价参考中枢"
+
+    if close_p <= 0:
+        close_p = ma200w_val
 
     bias_200w = ((close_p - ma200w_val) / ma200w_val) * 100.0 if ma200w_val > 0 else 0.0
     
@@ -457,9 +468,19 @@ def build_eight_dimension_truth_matrix(
     stock_name: str,
     snapshot: Dict[str, Any],
     fib_matrix: List[Dict[str, Any]] = None,
-    engine=None
+    engine=None,
+    mode: str = "compass_ocr"
 ) -> Dict[str, Any]:
     """生成八维全息客观物理真值硬核矩阵 (100% 确定性求解真值)"""
+    # 自动跨模自愈：若 snapshot 缺失核心字段且存在 engine，自动向偏微分引擎拉取真实截面
+    if (not snapshot or not snapshot.get("Close")) and engine is not None:
+        try:
+            snapshot = engine.get_latest_snapshot(stock_code, mode=mode, allow_network=True)
+            if not snapshot or not snapshot.get("Close"):
+                snapshot = engine.get_latest_snapshot(stock_code, mode="duckdb", allow_network=True)
+        except Exception:
+            pass
+
     close_p = float(snapshot.get("Close", 10.0) or 10.0)
     pct_chg = float(snapshot.get("Pct_Change", snapshot.get("pct_chg", 1.5)) or 1.5)
     to_v = float(snapshot.get("Turnover", 3.5) or 3.5)
@@ -482,7 +503,7 @@ def build_eight_dimension_truth_matrix(
     
     _, high_order = build_physics_context_block(stock_code, stock_name, snapshot)
     local_eval = evaluate_local_tactical_status(snapshot)
-    w200 = calculate_200_week_metrics(stock_code, snapshot, engine=engine)
+    w200 = calculate_200_week_metrics(stock_code, snapshot, engine=engine, mode=mode)
     pivots = compute_support_resistance_pivots(snapshot)
 
     # 1. 全景底座

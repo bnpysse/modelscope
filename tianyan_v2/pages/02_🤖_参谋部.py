@@ -43,17 +43,22 @@ ctrl = render_top_control_bar(engine, title_prefix="🤖 天衍五维 · 天眼�
 stock_code = ctrl["stock_code"]
 stock_name = ctrl["stock_name"]
 sel_days   = ctrl["days"]
+ds_mode    = ctrl.get("data_source_mode", "compass_ocr")
 
-snapshot = engine.get_latest_snapshot(stock_code)
-fib_matrix = engine.get_fibonacci_depth_matrix(stock_code)
+snapshot = engine.get_latest_snapshot(stock_code, mode=ds_mode, allow_network=True)
+if not snapshot or not snapshot.get("Close"):
+    snapshot = engine.get_latest_snapshot(stock_code, mode="duckdb", allow_network=True)
 
+fib_matrix = engine.get_fibonacci_depth_matrix(stock_code, mode=ds_mode, allow_network=True)
+if not fib_matrix:
+    fib_matrix = engine.get_fibonacci_depth_matrix(stock_code, mode="duckdb", allow_network=True)
 
 close_p = float(snapshot.get("Close", 10.0) or 10.0)
 pct_chg = float(snapshot.get("Pct_Change", snapshot.get("pct_chg", 1.5)) or 1.5)
 to_v = float(snapshot.get("Turnover", 3.5) or 3.5)
 
 # 前置秒级解算八维客观物理真值硬核矩阵 (100% 零幻觉底座)
-truth_matrix = build_eight_dimension_truth_matrix(stock_code, stock_name, snapshot, fib_matrix, engine=engine)
+truth_matrix = build_eight_dimension_truth_matrix(stock_code, stock_name, snapshot, fib_matrix, engine=engine, mode=ds_mode)
 dim3 = truth_matrix["dim3_position"]
 dim4 = truth_matrix["dim4_week200"]
 dim5 = truth_matrix["dim5_mine"]
@@ -229,6 +234,14 @@ if active_report_key not in st.session_state:
     st.session_state[active_report_key] = None
 if history_key not in st.session_state:
     st.session_state[history_key] = []
+
+# 自动防脏数据校验：若历史活动战报包含 10.00 元兜底假数据且真实股价明显不等于 10 元，自动清空脏缓存
+if st.session_state.get(active_report_key):
+    cur_rep = st.session_state[active_report_key]
+    cur_txt = str(cur_rep.get("content", ""))
+    if ("10.00" in cur_txt or "10.0元" in cur_txt) and abs(close_p - 10.0) > 2.0:
+        st.session_state[active_report_key] = None
+        st.session_state[history_key] = []
 
 
 # ══════════════════════════════════════════════

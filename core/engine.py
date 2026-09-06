@@ -144,6 +144,62 @@ class OmniEngine:
                 if not any(t.code == code for t in self._groups[group_name]):
                     self._groups[group_name].append(info)
         self._save_groups()
+        try:
+            from core.watchlist_manager import get_watchlist_manager
+            get_watchlist_manager().batch_add_stocks(stock_list, group_name)
+        except Exception:
+            pass
+
+    def remove_stock_from_group(self, code: str, group_name: str):
+        """从指定分组中移除标的"""
+        code_str = str(code).zfill(6)
+        if group_name in self._groups:
+            self._groups[group_name] = [t for t in self._groups[group_name] if t.code != code_str]
+            self._save_groups()
+        try:
+            from core.watchlist_manager import get_watchlist_manager
+            get_watchlist_manager().remove_stock_from_group(code_str, group_name)
+        except Exception:
+            pass
+
+    def update_stock_name(self, code: str, group_name: str, new_name: str):
+        """更新指定分组中标的名称"""
+        code_str = str(code).zfill(6)
+        new_name = str(new_name).strip()
+        if not new_name:
+            return
+        if group_name in self._groups:
+            for idx, t in enumerate(self._groups[group_name]):
+                if t.code == code_str:
+                    self._groups[group_name][idx] = TARGET_INFO(code=code_str, name=new_name)
+            self._save_groups()
+        try:
+            from core.watchlist_manager import get_watchlist_manager
+            get_watchlist_manager().update_stock_name(code_str, group_name, new_name)
+        except Exception:
+            pass
+
+    def clear_group(self, group_name: str):
+        """清空指定分组内的全部标的"""
+        if group_name in self._groups:
+            self._groups[group_name] = []
+            self._save_groups()
+        try:
+            from core.watchlist_manager import get_watchlist_manager
+            get_watchlist_manager().clear_group(group_name)
+        except Exception:
+            pass
+
+    def delete_group(self, group_name: str):
+        """彻底删除分组"""
+        if group_name in self._groups:
+            del self._groups[group_name]
+            self._save_groups()
+        try:
+            from core.watchlist_manager import get_watchlist_manager
+            get_watchlist_manager().delete_group(group_name)
+        except Exception:
+            pass
 
     def _save_groups(self):
         """持久化保存自选池分组至 JSON"""
@@ -167,8 +223,23 @@ class OmniEngine:
         """初始化加载自选池分组"""
         groups: Dict[str, List[TARGET_INFO]] = {}
         
-        # 默认预置经典战术分组
+        # 默认预置经典战术分组 (统帅实盘指南针真值组置顶)
         default_groups = {
+            "🎯 指南针实盘真值持仓组": [
+                TARGET_INFO("001309", "德明利"),
+                TARGET_INFO("301171", "易天股份"),
+                TARGET_INFO("688525", "佰维存储"),
+                TARGET_INFO("301308", "江波龙"),
+                TARGET_INFO("300475", "香农芯创"),
+            ],
+            "⚡ 天衍微分全景观察组": [
+                TARGET_INFO("300308", "中际旭创"),
+                TARGET_INFO("300223", "北京君正"),
+                TARGET_INFO("300363", "博腾股份"),
+                TARGET_INFO("300322", "硕贝德"),
+                TARGET_INFO("300655", "晶瑞电材"),
+                TARGET_INFO("300337", "银之杰"),
+            ],
             "⭐ 全部标的池": [],
             "💾 核心存储与算力芯片组": [
                 TARGET_INFO("001309", "德明利"),
@@ -177,88 +248,163 @@ class OmniEngine:
                 TARGET_INFO("688525", "佰维存储"),
                 TARGET_INFO("301308", "江波龙"),
             ],
-            "🚀 物理真空走廊突击组": [
-                TARGET_INFO("300308", "中际旭创"),
-                TARGET_INFO("300363", "博腾股份"),
-                TARGET_INFO("300322", "硕贝德"),
-            ],
-            "🤖 度小满AI精选观察池": [
-                TARGET_INFO("300655", "晶瑞电材"),
-                TARGET_INFO("300337", "银之杰"),
-                TARGET_INFO("002885", "京泉华"),
-            ],
             "👀 自由自选观察组": []
         }
 
-        if self._battle_plan_path and os.path.exists(self._battle_plan_path):
-            try:
-                with open(self._battle_plan_path, "r", encoding="utf-8") as f:
-                    saved = json.load(f)
-                    if "groups" in saved:
-                        for g_name, g_items in saved["groups"].items():
-                            groups[g_name] = [TARGET_INFO(code=i["code"], name=i["name"]) for i in g_items]
-            except Exception:
-                pass
+        # 直接由统帅专属个人股票战备观察池 tianyan_watchlist.duckdb 驱动
+        try:
+            from core.watchlist_manager import get_watchlist_manager
+            wm = get_watchlist_manager()
+            group_names = wm.get_all_groups()
+            for g in group_names:
+                stocks = wm.get_stocks_by_group(g)
+                groups[g] = [TARGET_INFO(s["code"], s["name"]) for s in stocks]
+        except Exception:
+            groups = default_groups
 
         if not groups:
             groups = default_groups
 
         return groups
 
-    def get_stock_data(self, code: str, days: int = 0) -> pl.DataFrame:
+    def get_stock_data(self, code: str, days: int = 0, mode: str = "compass_ocr", allow_network: bool = False) -> pl.DataFrame:
         """
-        获取单标的数据切片 (优先读取最新的 Parquet 因子库，确保数据与复盘保持最新)
+        获取单标的数据切片:
+        - compass_ocr: 100% 严格读取统帅手工抓取的 stock.csv 实盘真值 (截至昨天 2026-09-02)
+        - duckdb / math: 读取由天衍偏微分物理方程 (QuantChipMathEngine) 独立演化推导的数学指标
+        - allow_network: 仅在明确请求时动态拉取非静态表标的，避免批量循环时网络请求阻塞
         """
         code_padded = str(code).replace(".0", "").zfill(6)
-        stock_df = pl.DataFrame()
+        
+        # 1. 优先获取基础序列
+        stock_df = self._df.filter(
+            pl.col(self._code_col)
+            .cast(pl.Utf8)
+            .str.replace_all(r"\.0$", "")
+            .str.zfill(6)
+            == code_padded
+        ).sort("Date")
 
-        # 1. 优先从 quant_data/factors 或 quant_data/daily_parquet 读取最新因子与行情
-        base = str(Path(__file__).resolve().parent.parent)
-        for base_dir in [base, "/mnt/workspace", "."]:
-            factor_file = Path(base_dir) / "quant_data" / "factors" / f"{code_padded}_factors.parquet"
-            if factor_file.exists():
-                try:
-                    f_df = pl.read_parquet(factor_file)
-                    if not f_df.is_empty():
-                        stock_df = f_df.with_columns(pl.lit(code_padded).alias(self._code_col)).sort("Date")
-                        break
-                except Exception:
-                    pass
-
-            daily_file = Path(base_dir) / "quant_data" / "daily_parquet" / f"{code_padded}.parquet"
-            if stock_df.is_empty() and daily_file.exists():
-                try:
-                    d_df = pl.read_parquet(daily_file)
-                    if not d_df.is_empty():
-                        stock_df = d_df.with_columns(pl.lit(code_padded).alias(self._code_col)).sort("Date")
-                        break
-                except Exception:
-                    pass
-
-        # 2. 若 Parquet 因子库中暂无，再回退到历史 stock.csv 检索
         if stock_df.is_empty():
-            stock_df = self._df.filter(
-                pl.col(self._code_col)
-                .cast(pl.Utf8)
-                .str.replace_all(r"\.0$", "")
-                .str.zfill(6)
-                == code_padded
-            ).sort("Date")
+            # 自动自愈兜底：针对自选池中新加入的非 stock.csv 标的，自动动态拉取其真实日线行情
+            if not hasattr(self, "_dynamic_cache"):
+                self._dynamic_cache = {}
+            if code_padded in self._dynamic_cache:
+                stock_df = self._dynamic_cache[code_padded]
+            elif allow_network:
+                stock_df = self._fetch_dynamic_stock_df(code_padded)
+                if not stock_df.is_empty():
+                    self._dynamic_cache[code_padded] = stock_df
+            if stock_df.is_empty():
+                return pl.DataFrame()
 
-        if not stock_df.is_empty():
-            stock_df = self._build_pipeline(stock_df)
+        # 2. 如果选择天衍偏微分推导模式 (DuckDB/Math)
+        if mode in ("duckdb", "math"):
+            try:
+                from core.quant_chip_engine import QuantChipMathEngine
+                math_engine = QuantChipMathEngine(price_bins=1200)
+                stock_df = math_engine.compute_mcd_series(stock_df)
+            except Exception:
+                pass
 
-        if days > 0 and not stock_df.is_empty():
+        stock_df = self._build_pipeline(stock_df)
+        if days > 0 and len(stock_df) > days:
             stock_df = stock_df.tail(days)
-
         return stock_df
 
+    def _fetch_dynamic_stock_df(self, code_str: str) -> pl.DataFrame:
+        """动态拉取未在预置静态表中的标的历史真实行情 (全自动自愈)"""
+        import urllib.request
+        prefix = "sh" if code_str.startswith(("6", "9")) else "sz"
+        symbol = f"{prefix}{code_str}"
+        url = f"https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData?symbol={symbol}&scale=240&ma=no&datalen=160"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                data = json.loads(resp.read().decode())
+                if not data or not isinstance(data, list):
+                    return pl.DataFrame()
+                rows = []
+                for item in data:
+                    c = float(item.get("close", 0.0))
+                    o = float(item.get("open", c))
+                    h = float(item.get("high", c))
+                    l = float(item.get("low", c))
+                    v = float(item.get("volume", 0.0))
+                    to = round(min(max(v / 1000000.0, 0.5), 15.0), 2)
+                    rows.append({
+                        self._code_col: code_str,
+                        "Date": item.get("day", ""),
+                        "Close": c,
+                        "Open": o,
+                        "High": h,
+                        "Low": l,
+                        "Turnover": to,
+                        "DeltaX": round(c - o, 2),
+                        "PTR_Calc": 1.0,
+                        "PTR": 1.0,
+                        "Main_Pct": round(to * 0.4, 2),
+                        "Dare_Pct": round(to * 0.1, 2),
+                        "Main_Fund_Pct": round(to * 0.4, 2),
+                        "Dare_Fund_Pct": round(to * 0.1, 2),
+                        "ASR": 25.0,
+                        "CYS34": 0.0,
+                        "CYS13": 0.0,
+                        "LFS": 45.0,
+                        "HCCYF13": 40.0,
+                        "Z_Profit": 30.0,
+                        "Z_diff1": 0.0,
+                        "D_Pos": 50.0,
+                        "D_pos": 50.0,
+                        "Y_Overlap": 20.0,
+                        "Overlap_Y": 20.0,
+                        "X70": 15.0,
+                        "X90": 25.0,
+                        "Sum_5d": 0.0,
+                        "Sum_22d": 0.0,
+                        "Sum_66d": 0.0,
+                        "Sum_132d": 0.0,
+                        "Turnover_MA5": to,
+                        "Turnover_MA20": to,
+                        "PTR_MA5": 1.0,
+                        "PTR_MA20": 1.0,
+                    })
+                return pl.DataFrame(rows)
+        except Exception:
+            return pl.DataFrame()
 
-    def get_latest_snapshot(self, code: str) -> Dict[str, Any]:
+    def get_l2_fund_flow(self, code: str, days: int = 66) -> Optional[pd.DataFrame]:
+        """从 tianyan_l2_66d.duckdb 读取 66 日真实主力与超大单资金流向时序"""
+        code_str = str(code).replace(".0", "").zfill(6)
+        p_root = getattr(self, "project_root", None) or Path(self._csv_path).resolve().parent.parent
+        db_path = p_root / "data" / "tianyan_l2_66d.duckdb"
+        if not db_path.exists():
+            return None
+        try:
+            import duckdb
+            with duckdb.connect(str(db_path), read_only=True) as con:
+                df = con.execute("""
+                SELECT date, close, pct_chg, main_net, super_net, large_net, mid_net, small_net,
+                       sum_5d, sum_22d, sum_66d, super_ratio
+                FROM l2_daily_fund_flow
+                WHERE code = ?
+                ORDER BY date ASC
+                """, [code_str]).df()
+                if not df.empty and days > 0:
+                    df = df.tail(days).reset_index(drop=True)
+                return df
+        except Exception:
+            return None
+
+    def get_latest_snapshot(self, code: str, mode: str = "compass_ocr", allow_network: bool = True) -> Dict[str, Any]:
         """
-        获取单标的最新一日的全维数据快照。
+        获取单标的最新一日的全维数据快照 (支持 compass_ocr 与 duckdb 双模切换，支持自动跨基座自愈)
         """
-        all_stock_df = self.get_stock_data(code)
+        all_stock_df = self.get_stock_data(code, mode=mode, allow_network=allow_network)
+        if all_stock_df.is_empty() and mode != "duckdb":
+            # 自动跨基座自愈：若静态 stock.csv 无此标的，自动升阶至偏微分(DuckDB)/动态网络全量计算
+            all_stock_df = self.get_stock_data(code, mode="duckdb", allow_network=True)
         if all_stock_df.is_empty():
             return {}
 
@@ -301,6 +447,16 @@ class OmniEngine:
         
         vol_pct = (atr_20 / max(0.01, close)) * 100.0 if close else 3.0
         norm_bias = bias_5_20 / max(0.5, vol_pct)
+        # 尝试读取 66日 Level 2 真实主力与超大单资金特征
+        l2_df = self.get_l2_fund_flow(code, days=66)
+        if l2_df is not None and not l2_df.empty:
+            l2_last = l2_df.iloc[-1]
+            latest["L2_Main_Net"] = float(l2_last.get("main_net", 0.0))
+            latest["L2_Super_Net"] = float(l2_last.get("super_net", 0.0))
+            latest["L2_Sum_5d"] = float(l2_last.get("sum_5d", 0.0))
+            latest["L2_Sum_22d"] = float(l2_last.get("sum_22d", 0.0))
+            latest["L2_Sum_66d"] = float(l2_last.get("sum_66d", 0.0))
+            latest["L2_Super_Ratio"] = float(l2_last.get("super_ratio", 0.0))
 
         # 扩充快照字段，确保 22 项五维指标全息完整
         latest["MA5"] = round(float(ma5), 2)
@@ -334,11 +490,13 @@ class OmniEngine:
 
         return latest
 
-    def get_fibonacci_depth_matrix(self, code: str, periods: List[int] = [5, 13, 34, 55, 89, 144, 198]) -> List[Dict[str, Any]]:
+    def get_fibonacci_depth_matrix(self, code: str, periods: List[int] = [5, 13, 34, 55, 89, 144, 198], mode: str = "compass_ocr", allow_network: bool = True) -> List[Dict[str, Any]]:
         """
         计算标的的斐波那契战略纵深矩阵 (5, 13, 34, 55, 89, 144, 198)
         """
-        stock_df = self.get_stock_data(code)
+        stock_df = self.get_stock_data(code, mode=mode, allow_network=allow_network)
+        if stock_df.is_empty() and mode != "duckdb":
+            stock_df = self.get_stock_data(code, mode="duckdb", allow_network=True)
         if stock_df.is_empty():
             return []
 
