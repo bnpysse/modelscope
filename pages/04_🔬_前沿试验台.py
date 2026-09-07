@@ -54,9 +54,9 @@ if not stock_code:
     st.warning("暂无标的，请在战备库添加。")
     st.stop()
 
-# 从引擎拉取多维时空数据
-df = engine.get_stock_data(stock_code, days=max(sel_days, 60), mode=ds_mode)
-snapshot = engine.get_latest_snapshot(stock_code, mode=ds_mode)
+# 从引擎拉取多维时空数据 (开启 allow_network 自愈拉取新加入自选的标的，如 600639 浦东金桥)
+df = engine.get_stock_data(stock_code, days=max(sel_days, 60), mode=ds_mode, allow_network=True)
+snapshot = engine.get_latest_snapshot(stock_code, mode=ds_mode, allow_network=True)
 
 if df.is_empty():
     st.error(f"⚠️ 未找到标的 {stock_name} ({stock_code}) 的时空数据。")
@@ -145,6 +145,32 @@ with m4:
         <div style="font-size:11.5px; margin-top:4px; color:#22D3EE;">{tda_tag}</div>
     </div>
     """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════
+# [新增核心] 实时微观分时势流与高维相空间拓扑双核图表
+# ══════════════════════════════════════════════
+from core.components.physics_lab_chart import build_physics_lab_charts
+
+fig_intraday, fig_phase = build_physics_lab_charts(
+    stock_code=stock_code,
+    stock_name=stock_name,
+    prices=prices,
+    volumes=volumes,
+    high_barrier=high_barrier,
+    w_cost=w_cost,
+    p_escape=p_escape,
+    tda_ratio=tda_ratio
+)
+
+st.markdown("---")
+st.markdown("### 📡 实时物理流场走势与高维相空间拓扑 (动态双核全息视界)")
+
+col_g1, col_g2 = st.columns([6, 4])
+with col_g1:
+    st.plotly_chart(fig_intraday, use_container_width=True)
+
+with col_g2:
+    st.plotly_chart(fig_phase, use_container_width=True)
 
 st.markdown("---")
 
