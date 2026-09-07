@@ -575,11 +575,11 @@ def render_selectable_radar_tab(tab_df: pd.DataFrame, tab_name: str, pool_group_
 - CPR 锁仓刚性: {target_row_to_detect.get('CPR', 0.0)} | BRI 断层真空: {target_row_to_detect.get('BRI', 0.0)}
 
 【排版与裁决规范】：
-请使用优雅精致的小标题（统一使用 ### 三级标题，严禁使用一级或二级大标题），直接给出实战裁决：
+请使用优雅精致的小标题（统一使用 ### 三级标题，严禁使用一级或二级大标题），严禁输出任何 ASCII 字符画框（严禁使用 ┌ ┐ └ ┘ ├ ┤ ─ │ 等边框代码块，禁止字符方框），数据请使用清晰的 Markdown 列表或加粗呈现，直接给出实战裁决：
 ### 🎯 一、 主力筹码意图透视
 （透视主力是在战略吸筹、洗盘震荡、还是拉高出货）
 ### 🛡️ 二、 关键攻防防线与真空通道
-（指出第一铁血防守支撑位与上方真空加速阻力位）
+（清晰列出第一铁血防守支撑位、极限止损位、断层真空区间与上方真空加速阻力位）
 ### ⚖️ 三、 参谋部 4 级战术仓位裁决
 （明确给出【建仓伏击】/【梯次加仓】/【逢高减仓】/【观望空仓】军令，附带建议仓位成数与止损防守价）
 """
@@ -588,6 +588,7 @@ def render_selectable_radar_tab(tab_df: pd.DataFrame, tab_name: str, pool_group_
             with st.spinner(f"🛰️ 32B 大脑正在深度穿透推演 {c_name} ({c_code}) 五维筹码真值..."):
                 try:
                     from core.providers.modelscope_client import ModelScopeClient
+                    from core.components.report_sanitizer import sanitize_ai_report_markdown
                     client = ModelScopeClient()
                     res = client.create_chat_completion(
                         messages=[{"role": "user", "content": ai_prompt}],
@@ -599,7 +600,8 @@ def render_selectable_radar_tab(tab_df: pd.DataFrame, tab_name: str, pool_group_
                     if thinking:
                         with st.expander("💡 32B 大脑 CoT 深度思考链", expanded=False):
                             st.markdown(f"```text\n{thinking}\n```")
-                    st.markdown(content)
+                    cleaned_content = sanitize_ai_report_markdown(content)
+                    st.markdown(cleaned_content)
                     st.caption(f"⚡ 推理模型: {res.get('model_used', 'Tianyan 32B')} | ⏱️ 耗时: {res.get('duration_seconds', 0.0):.2f}s | 🎯 标的: {c_name}({c_code})")
                 except Exception as e:
                     st.error(f"⚠️ 大模型调用提示: {e}")

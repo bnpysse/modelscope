@@ -273,17 +273,19 @@ def render_quota_badge(as_popover: bool = True):
             st.progress(r_ratio, text=f"可用余量: {round(r_ratio * 100, 1)}% (剩余 {r_calls} / {l_calls} 次)")
 
             m_c1, m_c2 = st.columns(2)
+            official_used = quota_st.get("official_used_calls")
+            local_used = quota_st.get("local_used_calls", u_calls)
             with m_c1:
-                st.metric("今日已调用", f"{u_calls} 次", help="今日大模型 API 实际调用总次数")
+                st.metric("官方全账号已用", f"{u_calls} 次", help="与 ModelScope 官方云端实时同步的全账号今日总调用量")
             with m_c2:
-                st.metric("Token 消耗", f"{total_tokens:,}", help="今日累计消耗的输入与输出 Tokens")
+                st.metric("本地天衍调用", f"{local_used} 次", help=f"本地天衍系统今日贡献的调用量 (累计消耗 {total_tokens:,} Tokens)")
 
             st.markdown("---")
-            st.markdown("**🛡️ 零费用硬锁防御机制**")
+            st.markdown("**🛡️ 权威真值校准与零费用硬锁机制**")
             st.info(
-                "• **官方额度**: ModelScope 官方每日提供 2,000 次免费调用。\n"
-                "• **安全硬锁**: 系统内置 `ModelScopeBudgetGuard` 守护门神，设置 **1,800 次/天** 物理硬顶（预留 10% 缓冲应对网络重试），达标后直接硬拦截，**100% 杜绝任何超额扣费**。\n"
-                "• **持久审计**: 每次请求由本地 SQLite (`modelscope_budget.db`) 全量记录。"
+                "• **官方真值校准**: 已直连 ModelScope 官方用量接口 (`/api/v1/inference/rate-limit`)，全账号当日用量与魔搭后台 100% 同步。\n"
+                "• **安全硬锁**: 系统内置 `ModelScopeBudgetGuard` 守护门神，设置 **1,800 次/天** 物理硬顶（官方上限 2,000 次），达标后直接硬拦截，**100% 杜绝任何超额扣费**。\n"
+                "• **本地细分审计**: 本地 SQLite (`modelscope_budget.db`) 精准记录各模型调用分布与 Token 明细。"
             )
 
             models_data = quota_st.get("models", [])

@@ -394,7 +394,8 @@ with tab_briefing:
             if active_rep.get("thinking"):
                 with st.expander("💡 参谋部 CoT 思考推演链 (大模型内生辩证反思)", expanded=False):
                     st.markdown(f"```text\n{active_rep['thinking']}\n```")
-            st.markdown(active_rep["content"])
+            from core.components.report_sanitizer import sanitize_ai_report_markdown
+            st.markdown(sanitize_ai_report_markdown(active_rep["content"]))
             st.caption(f"⚡ 模型: {active_rep['model_used']} | ⏱️ 耗时: {active_rep.get('duration', 0.0):.2f}s | ● 零幻觉对齐 | 生成时间: {active_rep.get('timestamp', '')}")
         else:
             # 首次进入未点击时，自动提供本地确定性预判大纲
