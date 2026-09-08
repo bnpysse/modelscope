@@ -619,87 +619,22 @@ with c_tab4:
     render_selectable_radar_tab(df_super_rise, "超级主升", "👑 超级主升池", "super_rise")
 
 # ══════════════════════════════════════════════
-# 模块 ④：AI 哨兵前向跟踪与趋势验证看板 (Forward Sentinel Ledger)
+# 模块 ④：AI 哨兵前向跟踪与趋势验证入口 (已升级为左侧独立一级总台)
 # ══════════════════════════════════════════════
 st.markdown("<div style='margin-top:28px; border-top:2px solid rgba(56, 189, 248, 0.4); padding-top:18px;'></div>", unsafe_allow_html=True)
-c_sentinel_title, c_sentinel_actions = st.columns([7.0, 3.0])
+c_sentinel_title, c_sentinel_actions = st.columns([7.5, 2.5])
 with c_sentinel_title:
-    st.markdown("### 🔭 天衍 AI 哨兵前向跟踪与趋势验证看板")
-    st.caption("🛡️ **前向实战闭环与中长期趋势验证**：每日四大战法 Top 标的自动建仓存证，追踪 **1个月 (T+22)、1季度 (T+66)、半年 (T+132)** 战略趋势的形成与筹码健康度。")
-
-from core.forward_sentinel_tracker import sentinel_tracker
-
-try:
-    stats = sentinel_tracker.get_strategy_performance_stats()
-    records_df = sentinel_tracker.get_all_records()
-except Exception:
-    stats = {"total_picks": 0, "overall_win_rate": 0.0, "avg_pnl": 0.0, "strategy_breakdown": {}}
-    records_df = pd.DataFrame()
-
+    st.markdown("### 🔭 天衍 AI 哨兵前向跟踪与战法归因总台")
+    st.caption("🛡️ **前向实战闭环与中长期趋势验证已全面升级为独立一级面板**：支持【创业板 300 & 科创板 688】特化雷达、毫秒级实时浮盈刷新、以及 32B 大脑选股原则深度归因。")
 with c_sentinel_actions:
-    col_sync, col_ref = st.columns(2)
-    with col_sync:
-        if st.button("📥 同步自选", help="将全部在踪标的一键同步至【🤖 AI 哨兵自选跟踪池】", use_container_width=True):
-            sentinel_tracker.sync_to_watchlist("🤖 AI 哨兵自选跟踪池")
-            st.success("已成功同步！")
-            st.rerun()
-    with col_ref:
-        if st.button("🔄 刷新台账", help="重新载入前向跟踪账本", use_container_width=True):
-            st.rerun()
+    st.markdown("""
+    <div style="padding-top: 8px;">
+        <a href="/哨兵前向跟踪" target="_self" style="text-decoration:none;">
+            <button style="width:100%; background:linear-gradient(135deg, #0284C7 0%, #0369A1 100%); color:#FFFFFF; border:none; border-radius:8px; padding:10px 16px; font-weight:700; font-size:13px; cursor:pointer;">
+                🚀 进入独立哨兵总台 ➔
+            </button>
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
 
-# 1. 战略趋势宏观胜率卡片
-c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
-with c_kpi1:
-    st.metric("🎯 累计在踪标的", f"{stats.get('total_picks', 0)} 只", help="AI 哨兵每日自动建仓入库总数")
-with c_kpi2:
-    win_rate = stats.get('overall_win_rate', 0.0)
-    st.metric("🏆 整体浮盈胜率", f"{win_rate:.1f}%", delta=f"{win_rate-50.0:+.1f}% vs 基准" if stats.get('total_picks', 0) > 0 else None)
-with c_kpi3:
-    avg_pnl = stats.get('avg_pnl', 0.0)
-    st.metric("📈 平均累计收益", f"{avg_pnl:+.2f}%", delta=f"{avg_pnl:+.2f}%")
-with c_kpi4:
-    st.metric("⏳ 核心检验周期", "1个月 (T+22)", delta="季度(T+66)/半年(T+132)")
-
-# 2. 动态在踪矩阵表
-if not records_df.empty:
-    c_f1, c_f2 = st.columns([4, 6])
-    with c_f1:
-        st_filter = st.selectbox("战法类型筛选", ["全部战法"] + list(records_df["strategy"].unique()), key="sentinel_strat_filter")
-    with c_f2:
-        date_filter = st.selectbox("建仓日期批次", ["全部批次"] + sorted(list(records_df["entry_date"].unique()), reverse=True), key="sentinel_date_filter")
-
-    view_df = records_df.copy()
-    if st_filter != "全部战法":
-        view_df = view_df[view_df["strategy"] == st_filter]
-    if date_filter != "全部批次":
-        view_df = view_df[view_df["entry_date"] == date_filter]
-
-    display_sentinel_cols = [
-        "entry_date", "strategy", "code", "name", "entry_close", "latest_close",
-        "holding_days", "pnl_pct", "max_high_pct", "max_drawdown_pct",
-        "trend_status", "chip_evolution"
-    ]
-    show_df = view_df[display_sentinel_cols].copy()
-    
-    st.dataframe(
-        show_df,
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "entry_date": st.column_config.TextColumn("📅 建仓日期"),
-            "strategy": st.column_config.TextColumn("🎯 入选战法"),
-            "code": st.column_config.TextColumn("代码"),
-            "name": st.column_config.TextColumn("名称"),
-            "entry_close": st.column_config.NumberColumn("💰 建仓成本", format="%.2f"),
-            "latest_close": st.column_config.NumberColumn("现价", format="%.2f"),
-            "holding_days": st.column_config.NumberColumn("持仓天数", format="T+%d"),
-            "pnl_pct": st.column_config.NumberColumn("📈 累计收益率", format="%.2f%%"),
-            "max_high_pct": st.column_config.NumberColumn("🔥 最高脉冲", format="%.2f%%"),
-            "max_drawdown_pct": st.column_config.NumberColumn("🛡️ 最大回撤", format="%.2f%%"),
-            "trend_status": st.column_config.TextColumn("📊 趋势定性"),
-            "chip_evolution": st.column_config.TextColumn("🔒 筹码演化"),
-        }
-    )
-else:
-    st.info("AI 哨兵前向账本暂无记录，将在每日凌晨流水线自动建仓入库。")
 
