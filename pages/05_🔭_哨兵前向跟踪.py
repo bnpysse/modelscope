@@ -192,46 +192,92 @@ st.markdown("---")
 # ══════════════════════════════════════════════
 # 模块 ④：【核心大杀器】大模型前向复盘与选股原则深度归因
 # ══════════════════════════════════════════════
-st.markdown("### 🧠 32B 大脑前向实盘复盘：我们的选股原则中哪些最具价值？")
-st.caption("🤖 由 ModelScope 32B 深度思维链模型对所有历史批次选出的标的进行前向对照，客观穿透哪些物理因子最有效、哪些产生负面干扰、并指导当下周期的最优选股策略。")
+# ══════════════════════════════════════════════
+# 模块 ④：【核心大杀器】多模型前向复盘与 Google Drive 云端归档
+# ══════════════════════════════════════════════
+st.markdown("### 🧠 跨模型实盘前向推演：我们的选股原则中哪些最具实战暴利价值？")
+st.caption("🤖 由 ModelScope 双旗舰大模型（MiniMax-M1 深度思维反思 + Qwen3-30B 极速结构化指令）对所有历史前向批次标的进行横向对照，客观穿透哪些物理因子最有效，自动生成 Markdown 并同步归档至 **Google Drive** 与 DSW。")
 
-col_ai_btn, col_ai_model = st.columns([4, 6])
+col_ai_btn, col_ai_quick, col_ai_info = st.columns([3.5, 3.5, 3])
 with col_ai_btn:
-    btn_eval_rules = st.button("🔥 召唤 32B 大脑：发起全周期选股原则实战归因", type="primary", use_container_width=True)
-with col_ai_model:
-    st.markdown("<div style='font-size:12px; color:#94A3B8; padding-top:8px;'>采用 100% 真实浮动收益与物理初始张量作为绝对真值注入，杜绝一切后视镜幻觉。</div>", unsafe_allow_html=True)
+    btn_generate_multi_report = st.button("🚀 生成多模型全景研报 & 同步 Google Drive", type="primary", use_container_width=True, help="同时召唤 MiniMax-M1 与 Qwen3-30B 双脑推演，生成多视角归因战报，并秒级直通保存到 Google Drive！")
+with col_ai_quick:
+    btn_eval_rules = st.button("⚡ 快速屏幕单兵推演 (30B 秒级)", use_container_width=True, help="快速在当前网页屏幕输出 30B 归因分析")
+with col_ai_info:
+    st.markdown("<div style='font-size:12px; color:#94A3B8; padding-top:6px;'>直通腾讯现价真值，100% 杜绝后视镜幻觉。</div>", unsafe_allow_html=True)
 
+# 历史研报查看与加载
+rep_dir = PROJECT_ROOT / "quant_data" / "reports"
+if not rep_dir.exists():
+    rep_dir = Path("/mnt/workspace/quant_data/reports")
+rep_files = sorted(list(rep_dir.glob("Tianyan_Sentinel_Review_*.md")), reverse=True) if rep_dir.exists() else []
+
+if rep_files:
+    with st.expander("📚 历史前向复盘研报文库 (已归档至 Google Drive)", expanded=False):
+        c_sel_rep, c_down_rep = st.columns([7, 3])
+        rep_map = {f.name: f for f in rep_files}
+        selected_rep_name = c_sel_rep.selectbox("选择历史复盘研报：", options=list(rep_map.keys()), index=0)
+        selected_rep_file = rep_map[selected_rep_name]
+        with open(selected_rep_file, "r", encoding="utf-8") as rf:
+            rep_text = rf.read()
+        c_down_rep.download_button(
+            label=f"💾 下载 {selected_rep_name}",
+            data=rep_text,
+            file_name=selected_rep_name,
+            mime="text/markdown",
+            use_container_width=True
+        )
+        st.markdown(sanitize_ai_report_markdown(rep_text))
+
+# 触发一键生成多模型全景研报并同步 Google Drive
+if btn_generate_multi_report:
+    if records_df.empty:
+        st.warning("当前账本无记录，无法执行归因推演。")
+    else:
+        with st.spinner("🛰️ 正在召唤 ModelScope 双旗舰模型进行宏观与微观双重视角交叉推演，并将研报归档至 Google Drive..."):
+            try:
+                from scripts.generate_sentinel_multi_model_reports import generate_sentinel_multi_model_report
+                out_path = generate_sentinel_multi_model_report()
+                if out_path and out_path.exists():
+                    st.success(f"🎉 成功生成多模型前向复盘研报！已保存并同步至 Google Drive: `{out_path.name}`")
+                    with open(out_path, "r", encoding="utf-8") as f_out:
+                        content_md = f_out.read()
+                    st.markdown(sanitize_ai_report_markdown(content_md))
+                    st.rerun()
+            except Exception as e_rep:
+                st.error(f"研报生成异常: {e_rep}")
+
+# 快速屏幕单兵推演
 if btn_eval_rules:
     if records_df.empty:
         st.warning("当前账本无记录，无法执行归因推演。")
     else:
-        with st.spinner("🛰️ 32B 大脑正在深度复盘所有历史前向标的，解算量化原则价值贡献度..."):
-            # 组织复盘上下文
+        with st.spinner("🛰️ 30B 参谋大脑正在深度复盘所有历史前向标的，解算量化原则价值贡献度..."):
             eval_rows = []
             for _, r in records_df.iterrows():
                 eval_rows.append(
                     f"- 标的: {r['name']} ({r['code']}), 战法: {r['strategy']}, 建仓日: {r['entry_date']}, "
                     f"初始成本: {r['entry_close']:.2f}, 当前现价: {r['latest_close']:.2f}, 浮盈: {r['pnl_pct']:+.2f}%, "
-                    f"持仓: T+{r['holding_days']}, 初始CPR: {r.get('entry_cpr', 0.0)}, 初始BRI: {r.get('entry_bri', 0.0)}, "
-                    f"初始LFS: {r.get('entry_lfs', 0.0)}, 初始Z: {r.get('entry_z_profit', 0.0)}%"
+                    f"持仓: T+{r['holding_days']}, 初始CPR: {r.get('entry_cpr', 0.0):.2f}, 初始BRI: {r.get('entry_bri', 0.0):.2f}, "
+                    f"初始LFS: {r.get('entry_lfs', 0.0):.2f}, 状态: {r.get('trend_status', '跟踪中')}"
                 )
-            context_text = "\n".join(eval_rows[:30])
+            context_text = "\n".join(eval_rows[:35])
 
-            attribution_prompt = f"""你是由天衍全息量化系统驱动的 32B 首席战术参谋总长。
+            attribution_prompt = f"""你是由天衍全息量化系统驱动的 30B 首席战术参谋总长。
 统帅要求对天衍 AI 哨兵自建仓以来的全部前向标的执行【前向实战复盘与选股原则归因评估】。
 
 【历史建仓标的实盘演化台账（包含初始物理张量与真实走出来的盈亏）】：
 {context_text}
 
 【战役复盘与原则归因研判指令】：
-请严格遵循实战客观事实，杜绝任何模板废话，直接输出三大部分（统一使用 ### 三级标题，严禁输出任何 ASCII 字符方框，数据采用列表或加粗呈现）：
+请严格遵循实战客观事实，杜绝任何模板废话，直接输出三大板块（统一使用 ### 三级标题，严禁输出任何 ASCII 字符方框，数据采用列表或加粗呈现）：
 
 ### 🎯 一、 领涨先锋特征归因（哪些原则最具价值？）
-- 分析真实走势最好、超额收益最显著的标的，它们在建仓时具有哪些**绝对共同的物理量化特征**？（例如：高 CPR 刚性锁定、高 BRI 断层真空、低 ASR 冰点、还是 Z' 突增？）
-- 明确指出：在我们的四大战法与五维物理体系中，**哪 2~3 个核心原则是产生暴利的最强引擎**？
+- 分析真实走势最好、超额收益最显著的标的，它们在建仓时具有哪些**绝对共同的物理量化特征**？（高 CPR 刚性锁定、高 BRI 断层真空、低 LFS 浮筹？）
+- 明确指出：在我们的四大战法与五维物理体系中，**哪 1~2 个核心原则是产生暴利的最强引擎**？
 
 ### ⚠️ 二、 破位滞涨标的反思（触犯了哪些隐性隐患？）
-- 深入剖析走势落后、发生回撤或洗盘受阻的标的，当时选股时忽略了什么潜在风险？（是换手过大、主力虚假对倒、还是上方有隐形套牢盘？）
+- 深入剖析走势落后、发生回撤或洗盘受阻的标的，当时选股时忽略了什么潜在风险？
 - 指出必须增设的“一票否决”排雷红线。
 
 ### 🏹 三、 统帅当下周选股决策指引（当务之急该怎么选？）
@@ -246,17 +292,17 @@ if btn_eval_rules:
                 client = ModelScopeClient()
                 res = client.create_chat_completion(
                     messages=[{"role": "user", "content": attribution_prompt}],
-                    model="auto",
-                    temperature=0.15
+                    model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
+                    temperature=0.1
                 )
                 thinking = res.get("thinking", "")
                 content = res.get("content", "")
                 
                 with st.chat_message("assistant", avatar="🧠"):
                     if thinking:
-                        with st.expander("💡 32B 大脑 CoT 深度反思与归因推演链", expanded=False):
+                        with st.expander("💡 参谋大脑深度反思与归因推演链", expanded=False):
                             st.markdown(f"```text\n{thinking}\n```")
                     st.markdown(sanitize_ai_report_markdown(content))
-                    st.caption(f"⚡ 推理引擎: {res.get('model_used', 'Tianyan 32B')} | ⏱️ 耗时: {res.get('duration_seconds', 0.0):.2f}s | ● 纯客观真值归因")
+                    st.caption(f"⚡ 推理引擎: {res.get('model', 'Qwen3-Coder-30B')} | ⏱️ 耗时: {res.get('duration_seconds', 0.0):.2f}s | ● 纯客观真值归因")
             except Exception as e:
                 st.error(f"⚠️ 大模型调用提示: {e}")

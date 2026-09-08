@@ -29,12 +29,51 @@ DB_PATH = DATA_DIR / "modelscope_budget.db"
 
 
 class ModelScopeBudgetGuard:
-    """本地日配额水库与零费用硬锁门神"""
+    """本地日配额水库与零费用硬锁门神 (支持魔搭官方 API 权威校准)"""
 
-    def __init__(self, db_path: Path = DB_PATH, daily_limit: int = 1800):
+    def __init__(self, db_path: Path = DB_PATH, daily_limit: int = 1800, api_key: Optional[str] = None):
         self.db_path = db_path
         self.daily_limit = daily_limit
+        self.api_key = (
+            api_key
+            or os.environ.get("MODELSCOPE_API_KEY")
+            or os.environ.get("TIANYAN_API_KEY")
+        )
+        self._official_cache = {"timestamp": 0.0, "data": None}
         self._init_db()
+
+    def fetch_official_usage(self, ttl: float = 15.0) -> Optional[int]:
+        """从魔搭官方权威接口获取全账号当日实际调用总次数
+        GET https://modelscope.cn/api/v1/inference/rate-limit
+        """
+        now = time.time()
+        if now - self._official_cache["timestamp"] < ttl and self._official_cache["data"] is not None:
+            return self._official_cache["data"]
+
+        if not self.api_key:
+            return None
+
+        import urllib.request
+        import json
+        try:
+            url = "https://modelscope.cn/api/v1/inference/rate-limit"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "User-Agent": "TianYan-Quant/2.0"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if data.get("Code") == 200 and "Data" in data:
+                    used = data["Data"].get("currentUsagePerDay")
+                    if used is not None:
+                        self._official_cache = {"timestamp": now, "data": int(used)}
+                        return int(used)
+        except Exception as e:
+            logger.debug(f"Fetch official ModelScope rate-limit failed: {e}")
+        return None
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
@@ -57,7 +96,7 @@ class ModelScopeBudgetGuard:
         return datetime.datetime.now().strftime("%Y-%m-%d")
 
     def get_today_usage(self) -> Dict[str, Any]:
-        """获取今日累计调用次数与 Token 统计及各模型细分"""
+        """获取今日累计调用次数与 Token 统计及各模型细分 (官方权威真值优先，本地 SQLite 补充明细)"""
         today = self._today_str()
         models_detail = []
         total_calls = 0
@@ -90,17 +129,23 @@ class ModelScopeBudgetGuard:
         except Exception as e:
             logger.warning(f"Error querying quota db: {e}")
 
-        remaining = max(0, self.daily_limit - total_calls)
+        # 权威双轨校准：优先采用官方 API 返回的全账号当日真值，本地 SQLite 补充明细
+        official_used = self.fetch_official_usage()
+        effective_used = official_used if official_used is not None else total_calls
+
+        remaining = max(0, self.daily_limit - effective_used)
         ratio = max(0.0, min(1.0, remaining / self.daily_limit))
 
         return {
             "date": today,
-            "used_calls": total_calls,
+            "used_calls": effective_used,
+            "official_used_calls": official_used,
+            "local_used_calls": total_calls,
             "limit_calls": self.daily_limit,
             "remaining_calls": remaining,
             "remaining_ratio": ratio,
             "total_tokens": total_tokens,
-            "is_safe": total_calls < self.daily_limit,
+            "is_safe": effective_used < self.daily_limit,
             "models": models_detail,
         }
 
@@ -173,11 +218,10 @@ class ModelScopeClient:
         }
     }
 
-    # 级联后备序列
+    # 级联后备序列 (实测验证秒级高可用)
     CASCADE_CANDIDATES = [
-        "deepseek-ai/DeepSeek-V4-Pro",
-        "MiniMax/MiniMax-M1-80k",
         "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        "MiniMax/MiniMax-M1-80k",
         "Qwen/Qwen3-235B-A22B-Thinking-2507"
     ]
 
@@ -206,7 +250,7 @@ class ModelScopeClient:
             or self.DEFAULT_FALLBACK_KEY
         )
         self.base_url = (base_url or os.environ.get("MODELSCOPE_BASE_URL", "https://api-inference.modelscope.cn/v1")).rstrip("/")
-        self.guard = ModelScopeBudgetGuard()
+        self.guard = ModelScopeBudgetGuard(api_key=self.api_key)
 
     def get_quota_status(self) -> Dict[str, Any]:
         """获取当前配额水库余量"""
@@ -301,8 +345,13 @@ class ModelScopeClient:
 
             t0 = time.time()
             try:
-                # 针对 235B 超大模型适当放宽超时，其它模型 30s
-                cur_timeout = 50.0 if "235B" in target_model else 30.0
+                # 针对长文本思考模型与 235B 放宽超时，支持调用方自定义 timeout
+                if timeout and timeout > 30.0:
+                    cur_timeout = timeout
+                elif "235B" in target_model or "MiniMax" in target_model:
+                    cur_timeout = 65.0
+                else:
+                    cur_timeout = 35.0
                 resp = requests.post(url, headers=headers, json=payload, timeout=cur_timeout)
                 resp.raise_for_status()
                 data = resp.json()
