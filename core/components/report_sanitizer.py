@@ -42,12 +42,28 @@ def sanitize_ai_report_markdown(content: str) -> str:
     # 针对 ```text 或 ``` 代码块中的 ASCII 边框执行清洗
     processed = re.sub(r"```(?:text|plain)?\s*([\s\S]*?)```", clean_code_block, content)
     
-    # 针对裸露在正文中的孤立边框符号进行修剪
-    processed = re.sub(r"^[┌└├╔╚┏┗].*?[┐┘┤╗╝┓┛]$", "", processed, flags=re.MULTILINE)
-    processed = re.sub(r"^[│║┃|]\s*", "- ", processed, flags=re.MULTILINE)
-    processed = re.sub(r"\s*[│║┃|]$", "", processed, flags=re.MULTILINE)
-    processed = re.sub(r"^[─═━\-_=]{4,}$", "", processed, flags=re.MULTILINE)
-    
+    # 逐行清洗裸露的字符画框符号，100% 保护标准 Markdown 表格行！
+    new_lines = []
+    for line in processed.split("\n"):
+        s = line.strip()
+        # 严格判断是否为标准 Markdown 表格行（例如 | 标的 | 代码 | 或 | :--- | :--- |）
+        if s.startswith("|") and s.endswith("|") and s.count("|") >= 2:
+            new_lines.append(line)
+            continue
+        
+        # 过滤掉孤立的 ASCII 边框行
+        if re.match(r"^[┌└├╔╚┏┗].*?[┐┘┤╗╝┓┛]$", s):
+            continue
+        if re.match(r"^[─═━\-_=]{4,}$", s):
+            continue
+        
+        # 仅针对非表格行清除特殊的 Unicode 竖线边框 (│ ║ ┃)，绝不误伤 ASCII 竖线 |
+        line = re.sub(r"^[│║┃]\s*", "- ", line)
+        line = re.sub(r"\s*[│║┃]$", "", line)
+        new_lines.append(line)
+
+    processed = "\n".join(new_lines)
+
     # 压缩连续多余空行
     processed = re.sub(r"\n{3,}", "\n\n", processed)
 

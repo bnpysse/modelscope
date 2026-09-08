@@ -33,6 +33,93 @@ st.set_page_config(
 )
 
 apply_tactical_theme()
+
+# 注入针对前向研报排版的精细化高清晰度 CSS
+st.markdown("""
+<style>
+/* 研报全局排版与字体紧凑度优化 */
+.stMarkdown h1, .stMarkdown [data-testid="stMarkdownContainer"] h1 {
+    font-size: 20px !important;
+    font-weight: 800 !important;
+    color: #38BDF8 !important;
+    margin-top: 14px !important;
+    margin-bottom: 8px !important;
+    letter-spacing: -0.01em !important;
+}
+.stMarkdown h2, .stMarkdown [data-testid="stMarkdownContainer"] h2 {
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    color: #F8FAFC !important;
+    margin-top: 16px !important;
+    margin-bottom: 8px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding-bottom: 4px !important;
+}
+.stMarkdown h3, .stMarkdown [data-testid="stMarkdownContainer"] h3 {
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    color: #93C5FD !important;
+    margin-top: 12px !important;
+    margin-bottom: 6px !important;
+}
+.stMarkdown h4, .stMarkdown [data-testid="stMarkdownContainer"] h4 {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #CBD5E1 !important;
+    margin-top: 8px !important;
+    margin-bottom: 4px !important;
+}
+.stMarkdown p, .stMarkdown li, .stMarkdown [data-testid="stMarkdownContainer"] p, .stMarkdown [data-testid="stMarkdownContainer"] li {
+    font-size: 12.5px !important;
+    line-height: 1.65 !important;
+    color: #E2E8F0 !important;
+}
+.stMarkdown blockquote {
+    font-size: 12px !important;
+    background: rgba(15, 23, 42, 0.6) !important;
+    border-left: 3px solid #38BDF8 !important;
+    padding: 6px 12px !important;
+    border-radius: 4px !important;
+    color: #94A3B8 !important;
+    margin: 8px 0 !important;
+}
+
+/* 研报战术表格高级渲染 (深色科技风 + 完美对齐 + 斑马纹) */
+.stMarkdown table, [data-testid="stMarkdownContainer"] table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 10px 0 16px 0 !important;
+    font-size: 12px !important;
+    border-radius: 6px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    background: rgba(15, 23, 42, 0.7) !important;
+}
+.stMarkdown th, [data-testid="stMarkdownContainer"] th {
+    background: rgba(30, 41, 59, 0.9) !important;
+    color: #38BDF8 !important;
+    font-weight: 700 !important;
+    padding: 8px 10px !important;
+    text-align: left !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+}
+.stMarkdown td, [data-testid="stMarkdownContainer"] td {
+    padding: 6px 10px !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    color: #F1F5F9 !important;
+    font-size: 12px !important;
+}
+.stMarkdown tr:nth-child(even), [data-testid="stMarkdownContainer"] tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02) !important;
+}
+.stMarkdown tr:hover, [data-testid="stMarkdownContainer"] tr:hover {
+    background: rgba(56, 189, 248, 0.08) !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 engine = get_tianyan_engine()
 
 # 侧边栏
