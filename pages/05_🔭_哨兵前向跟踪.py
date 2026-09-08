@@ -58,29 +58,42 @@ with c_title:
 
 # 自动/手动刷新实时行情
 with c_actions:
-    col_act1, col_act2, col_act3 = st.columns([1.1, 1.0, 1.2])
+    col_act1, col_act2, col_act3 = st.columns([1.1, 1.1, 1.2])
     with col_act1:
         if st.button("⚡ 实时现价核算", help="直通腾讯行情接口，秒级刷新当前在踪标的的最新盘中现价与真实浮盈", use_container_width=True, type="primary"):
-            updated = sentinel_tracker.refresh_realtime_pnl()
+            from core import forward_sentinel_tracker
+            import importlib
+            importlib.reload(forward_sentinel_tracker)
+            updated = forward_sentinel_tracker.sentinel_tracker.refresh_realtime_pnl()
             st.toast(f"✅ 成功刷新 {updated} 只在踪标的的最新实时盘中现价与收益！")
             st.rerun()
     with col_act2:
-        if st.button("📥 一键入池", help="将全部在踪标的一键同步至【🤖 AI 哨兵自选跟踪池】", use_container_width=True):
-            sentinel_tracker.sync_to_watchlist("🤖 AI 哨兵自选跟踪池")
-            st.toast("✅ 已将全部在踪标的同步至自选池！")
+        if st.button("📥 裂变同步自选", help="按【建仓日期批次】分别创建专属战备池（如【🤖 哨兵-0904批次】、【🤖 哨兵-0908批次】），隔离跟踪", use_container_width=True):
+            from core import forward_sentinel_tracker
+            import importlib
+            importlib.reload(forward_sentinel_tracker)
+            forward_sentinel_tracker.sentinel_tracker.sync_to_watchlist("🤖 AI 哨兵自选跟踪池", sync_by_batch=True)
+            st.toast("✅ 已按【建仓批次】分别裂变建立专属自选跟踪池！")
             st.rerun()
     with col_act3:
-        if st.button("🌱 导入今日双创标的", help="从最新物化快照中为今日特别录入创业板(300)与科创板(688) Top 3 标的", use_container_width=True):
+        if st.button("🌱 建立今日(9-8)追踪池", help="为今日(9-8)按四大战法建立全新批次观察池（含双创高弹性标的）", use_container_width=True):
             snap_path = Path("/mnt/workspace/quant_data/full_market_snapshot.parquet")
             if not snap_path.exists():
                 snap_path = PROJECT_ROOT / "quant_data" / "full_market_snapshot.parquet"
             if snap_path.exists():
-                import datetime
-                today_str = datetime.date.today().strftime("%Y-%m-%d")
-                star_picks = extract_daily_top_picks_from_snapshot(snap_path, board_filter="chinext_star")
-                cnt = sentinel_tracker.seed_daily_picks(today_str, star_picks)
-                sentinel_tracker.refresh_realtime_pnl()
-                st.toast(f"✅ 成功录入 {cnt} 只【创业板 & 科创板】特化先锋标的！")
+                from core import forward_sentinel_tracker
+                import importlib
+                importlib.reload(forward_sentinel_tracker)
+                today_str = "2026-09-08"
+                all_picks = forward_sentinel_tracker.extract_daily_top_picks_from_snapshot(snap_path, board_filter="all")
+                star_picks = forward_sentinel_tracker.extract_daily_top_picks_from_snapshot(snap_path, board_filter="chinext_star")
+                
+                # 合并建仓列表
+                combined_picks = all_picks + star_picks
+                cnt = forward_sentinel_tracker.sentinel_tracker.seed_daily_picks(today_str, combined_picks)
+                forward_sentinel_tracker.sentinel_tracker.refresh_realtime_pnl()
+                forward_sentinel_tracker.sentinel_tracker.sync_to_watchlist("🤖 AI 哨兵自选跟踪池", sync_by_batch=True)
+                st.toast(f"✅ 成功建立今日({today_str})新批次观察池，新增入库 {cnt} 只标的！")
                 st.rerun()
             else:
                 st.error("未找到 full_market_snapshot.parquet 快照！")

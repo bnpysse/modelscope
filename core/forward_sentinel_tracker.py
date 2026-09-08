@@ -301,21 +301,39 @@ class ForwardSentinelTracker:
             "strategy_breakdown": strat_stats
         }
 
-    def sync_to_watchlist(self, group_name: str = "🤖 AI 哨兵自选跟踪池"):
-        """将当前在踪标的高速同步到 tianyan_watchlist 战备库分组"""
+    def sync_to_watchlist(self, group_name: str = "🤖 AI 哨兵自选跟踪池", sync_by_batch: bool = True):
+        """
+        将当前在踪标的高速同步到战备库自选池分组
+        - 若 sync_by_batch=True: 自动按建仓批次智能裂变创建专属战备池，如【🤖 哨兵-0904批次】、【🤖 哨兵-0908双创批次】
+        - 若 sync_by_batch=False: 统一写入指定的全量子池
+        """
         con = self._get_con()
-        df = con.execute("SELECT DISTINCT code, name FROM sentinel_forward_records WHERE is_active = TRUE").df()
+        df = con.execute("SELECT DISTINCT entry_date, strategy, code, name FROM sentinel_forward_records WHERE is_active = TRUE").df()
         con.close()
         if df.empty:
             return
 
-        stock_list = [{"code": str(r["code"]).zfill(6), "name": str(r["name"])} for _, r in df.iterrows()]
         try:
             from core.watchlist_manager import get_watchlist_manager
+            from core.engine import create_engine
             wm = get_watchlist_manager()
-            wm.batch_add_stocks(stock_list, group_name)
-        except Exception:
-            pass
+            eng = create_engine()
+
+            if sync_by_batch:
+                for entry_d, group_items in df.groupby("entry_date"):
+                    clean_d = str(entry_d).replace("-", "")[4:]
+                    batch_group_name = f"🤖 哨兵-{clean_d}批次"
+                    s_list = [{"code": str(r["code"]).zfill(6), "name": str(r["name"])} for _, r in group_items.iterrows()]
+                    wm.batch_add_stocks(s_list, batch_group_name)
+                    eng.add_stocks_to_group(batch_group_name, s_list)
+
+            # 同时维护全量聚合总池
+            all_list = [{"code": str(r["code"]).zfill(6), "name": str(r["name"])} for _, r in df.iterrows()]
+            wm.batch_add_stocks(all_list, group_name)
+            eng.add_stocks_to_group(group_name, all_list)
+        except Exception as e:
+            print(f"Sync watchlist warning: {e}")
+
 
 
 # 全局单例
