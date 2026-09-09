@@ -122,6 +122,9 @@ st.markdown("""
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import importlib
+import core.sentiment_radar
+importlib.reload(core.sentiment_radar)
 from core.sentiment_radar import fetch_intraday_minute_chart
 
 
