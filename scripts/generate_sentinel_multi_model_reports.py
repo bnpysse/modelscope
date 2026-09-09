@@ -92,16 +92,35 @@ def extract_sentinel_performance_summary() -> Dict[str, Any]:
     }
 
 
-def build_system_prompt_for_review(summary_data: Dict[str, Any]) -> str:
-    """组织供大模型分析的高维客观物理真值 Prompt"""
+from core.sentiment_radar import calculate_sentiment_summary, fetch_cls_telegraph, fetch_stock_monitors
+
+
+def build_system_prompt_for_review(summary_data: Dict[str, Any], sentiment_data: Optional[Dict[str, Any]] = None) -> str:
+    """组织供大模型分析的高维客观物理真值与宏观超短情绪 Prompt"""
     batch_info = "\n".join([
         f"- 批次 {b['batch']}: 共 {b['count']} 只标的, 平均浮盈: {b['avg_pnl']:+.2f}%, "
         f"最大盈利: {b['max_pnl']:+.2f}%, 胜率: {b['win_rate']}%, 领跑标的: {b['top_winner']}"
         for b in summary_data["batch_stats"]
     ])
 
+    # 宏观超短情绪与题材主线信息
+    sentiment_block = ""
+    if sentiment_data:
+        ladder_str = ", ".join([f"{k}连板:{v}家" for k, v in sentiment_data.get("ladder", {}).items()]) or "无连板"
+        ind_str = ", ".join([f"{x[0]}({x[1]}家)" for x in sentiment_data.get("top_industries", [])]) or "分散"
+        sentiment_block = f"""
+【全市场超短情绪温度计与题材主线】：
+- 涨停家数: {sentiment_data.get('zt_count', 0)} 家 | 炸板家数: {sentiment_data.get('zb_count', 0)} 家 | 炸板率: {sentiment_data.get('break_rate', 0.0)}%
+- 跌停家数: {sentiment_data.get('dt_count', 0)} 家 | 最高连板高度: {sentiment_data.get('max_height', 0)} 连板
+- 连板梯队分布: [{ladder_str}]
+- 领涨主线题材/行业: [{ind_str}]
+- 重点监控/异动警示标的数: {len(sentiment_data.get('monitors', []))} 只
+"""
+
     prompt = f"""你是由天衍全息量化系统驱动的首席量化推演大脑与战术参谋长。
 现在是收盘后的战略前向复盘时刻。统帅要求对天衍 AI 哨兵自建仓以来的所有批次标的（重点关注创业板 300 与科创板 688）执行【多维度深度实盘前向归因研报】。
+
+{sentiment_block}
 
 【市场与哨兵批次总体态势】：
 - 历史追踪总标的数: {summary_data['total_count']} 只
@@ -118,11 +137,11 @@ def build_system_prompt_for_review(summary_data: Dict[str, Any]) -> str:
 
 ### 🎯 一、 领涨先锋特征深度归因（哪些原则最具暴利价值？）
 - 穿透真实走势最强（正超额收益最高）的标的，它们在建仓时具有哪些**完全一致的量化物理共性**？
-- 从四大战法（极低换手锁仓、脉冲资金接力、断层真空回踩、斐波共振）中，明确裁决哪 1~2 种战法在当前震荡分化行情中兑现度最高？
+- 从四大战法（极低换手锁仓、脉冲资金接力、断层真空回踩、斐波共振）中，结合当前涨停梯队与题材主线，明确裁决哪 1~2 种战法在当前震荡分化行情中兑现度最高？
 
 ### ⚠️ 二、 破位与滞涨标的反思（触犯了哪些隐性暗礁？）
 - 严厉剖析回撤居前或走势停滞的标的，当时选股时忽视了什么隐患（例如上方套牢盘太重、换手率过大导致筹码松动、或伪突破）？
-- 确立必须在选股算法中追加的“一票否决”硬性红线。
+- 确立必须在选股算法中追加的“一票否决”硬性红线（结合交易所重点监控名单与异动警示）。
 
 ### 🚀 三、 双创高弹性战场专项穿透（创业板 300 / 科创板 688）
 - 针对 20% 涨跌幅限制的双创板块标的，分析其波动幅度和筹码流动规律；
@@ -133,7 +152,7 @@ def build_system_prompt_for_review(summary_data: Dict[str, Any]) -> str:
   1. CPR（筹码锁仓刚性）建议阈值下限；
   2. BRI（断层真空度）建议阈值下限；
   3. LFS（浮筹比例）建议安全区间；
-  4. 推荐统帅重点布防的核心方向。
+  4. 结合连板高度与题材主线，推荐统帅重点布防的核心方向。
 """
     return prompt
 
@@ -155,8 +174,19 @@ def generate_sentinel_multi_model_report() -> Path:
         print("⚠️ 当前无在踪标的，无法生成复盘研报。")
         return None
 
-    # 3. 组织推演 Prompt
-    system_prompt = build_system_prompt_for_review(summary_data)
+    # 3. 获取全市场超短情绪与题材主线
+    print("🌡️ 正在拉取全市场涨跌停梯队、炸板率与异动监控...")
+    try:
+        sentiment_summary = calculate_sentiment_summary()
+        monitors = fetch_stock_monitors()
+        sentiment_summary["monitors"] = monitors
+        print(f"✓ 情绪温度计就绪: 涨停 {sentiment_summary['zt_count']} 家, 炸板 {sentiment_summary['zb_count']} 家 (炸板率 {sentiment_summary['break_rate']}%)")
+    except Exception as e_sm:
+        print(f"⚠️ 情绪雷达获取提示: {e_sm}")
+        sentiment_summary = None
+
+    # 4. 组织推演 Prompt (注入物理特征 + 超短情绪双重真值)
+    system_prompt = build_system_prompt_for_review(summary_data, sentiment_data=sentiment_summary)
 
     client = ModelScopeClient()
 

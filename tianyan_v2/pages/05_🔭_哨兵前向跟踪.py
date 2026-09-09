@@ -207,150 +207,156 @@ with c_kpi4:
 st.markdown("---")
 
 # ══════════════════════════════════════════════
-# 模块 ③：板块特化筛选与批次管理表
+# 双轮驱动 Tab 布局：绝不破坏原有体系，以独立面板无缝融合新能力
 # ══════════════════════════════════════════════
-if not records_df.empty:
-    c_f1, c_f2, c_f3 = st.columns([3.5, 3.5, 3.0])
-    with c_f1:
-        board_option = st.selectbox(
-            "🏛️ 板块特化重点聚焦",
-            ["👑 重点聚焦：创业板 (300) & 科创板 (688)", "⭐ 全市场 (主板+双创)", "🏢 仅主板 (60/00)"],
-            key="sentinel_board_focus"
+tab_forward, tab_sentiment = st.tabs([
+    "🔭 哨兵前向实战台账与复盘",
+    "⚡ 超短情绪雷达与异动前哨 (Layer 8 融合)"
+])
+
+with tab_forward:
+    # ══════════════════════════════════════════════
+    # 模块 ③：板块特化筛选与批次管理表
+    # ══════════════════════════════════════════════
+    if not records_df.empty:
+        c_f1, c_f2, c_f3 = st.columns([3.5, 3.5, 3.0])
+        with c_f1:
+            board_option = st.selectbox(
+                "🏛️ 板块特化重点聚焦",
+                ["👑 重点聚焦：创业板 (300) & 科创板 (688)", "⭐ 全市场 (主板+双创)", "🏢 仅主板 (60/00)"],
+                key="sentinel_board_focus"
+            )
+        with c_f2:
+            st_filter = st.selectbox(
+                "🎯 战法类型筛选",
+                ["全部战法"] + list(records_df["strategy"].unique()),
+                key="sentinel_strat_filter_standalone"
+            )
+        with c_f3:
+            all_dates = sorted(list(records_df["entry_date"].unique()), reverse=True)
+            date_filter = st.selectbox(
+                "📅 建仓日期批次",
+                ["全部批次"] + all_dates,
+                key="sentinel_date_filter_standalone"
+            )
+
+        # 数据过滤
+        view_df = records_df.copy()
+        
+        # 板块过滤逻辑
+        if "创业板" in board_option:
+            view_df = view_df[view_df["code"].astype(str).str.startswith(("300", "688"))]
+        elif "仅主板" in board_option:
+            view_df = view_df[~view_df["code"].astype(str).str.startswith(("300", "688", "8", "4"))]
+
+        if st_filter != "全部战法":
+            view_df = view_df[view_df["strategy"] == st_filter]
+        if date_filter != "全部批次":
+            view_df = view_df[view_df["entry_date"] == date_filter]
+
+        display_cols = [
+            "entry_date", "strategy", "code", "name", "entry_close", "latest_close",
+            "holding_days", "pnl_pct", "max_high_pct", "max_drawdown_pct",
+            "trend_status", "chip_evolution"
+        ]
+        show_df = view_df[display_cols].copy()
+
+        st.dataframe(
+            show_df,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "entry_date": st.column_config.TextColumn("📅 建仓日期"),
+                "strategy": st.column_config.TextColumn("🎯 入选战法"),
+                "code": st.column_config.TextColumn("代码"),
+                "name": st.column_config.TextColumn("名称"),
+                "entry_close": st.column_config.NumberColumn("💰 初始基准价", format="%.2f"),
+                "latest_close": st.column_config.NumberColumn("当前实时价", format="%.2f"),
+                "holding_days": st.column_config.NumberColumn("持仓天数", format="T+%d"),
+                "pnl_pct": st.column_config.NumberColumn("📈 实时收益率", format="%.2f%%"),
+                "max_high_pct": st.column_config.NumberColumn("🔥 最高脉冲", format="%.2f%%"),
+                "max_drawdown_pct": st.column_config.NumberColumn("🛡️ 最大回撤", format="%.2f%%"),
+                "trend_status": st.column_config.TextColumn("📊 趋势定性"),
+                "chip_evolution": st.column_config.TextColumn("🔒 筹码演化"),
+            }
         )
-    with c_f2:
-        st_filter = st.selectbox(
-            "🎯 战法类型筛选",
-            ["全部战法"] + list(records_df["strategy"].unique()),
-            key="sentinel_strat_filter_standalone"
-        )
-    with c_f3:
-        all_dates = sorted(list(records_df["entry_date"].unique()), reverse=True)
-        date_filter = st.selectbox(
-            "📅 建仓日期批次",
-            ["全部批次"] + all_dates,
-            key="sentinel_date_filter_standalone"
-        )
-
-    # 数据过滤
-    view_df = records_df.copy()
-    
-    # 板块过滤逻辑
-    if "创业板" in board_option:
-        view_df = view_df[view_df["code"].astype(str).str.startswith(("300", "688"))]
-    elif "仅主板" in board_option:
-        view_df = view_df[~view_df["code"].astype(str).str.startswith(("300", "688", "8", "4"))]
-
-    if st_filter != "全部战法":
-        view_df = view_df[view_df["strategy"] == st_filter]
-    if date_filter != "全部批次":
-        view_df = view_df[view_df["entry_date"] == date_filter]
-
-    display_cols = [
-        "entry_date", "strategy", "code", "name", "entry_close", "latest_close",
-        "holding_days", "pnl_pct", "max_high_pct", "max_drawdown_pct",
-        "trend_status", "chip_evolution"
-    ]
-    show_df = view_df[display_cols].copy()
-
-    st.dataframe(
-        show_df,
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "entry_date": st.column_config.TextColumn("📅 建仓日期"),
-            "strategy": st.column_config.TextColumn("🎯 入选战法"),
-            "code": st.column_config.TextColumn("代码"),
-            "name": st.column_config.TextColumn("名称"),
-            "entry_close": st.column_config.NumberColumn("💰 初始基准价", format="%.2f"),
-            "latest_close": st.column_config.NumberColumn("当前实时价", format="%.2f"),
-            "holding_days": st.column_config.NumberColumn("持仓天数", format="T+%d"),
-            "pnl_pct": st.column_config.NumberColumn("📈 实时收益率", format="%.2f%%"),
-            "max_high_pct": st.column_config.NumberColumn("🔥 最高脉冲", format="%.2f%%"),
-            "max_drawdown_pct": st.column_config.NumberColumn("🛡️ 最大回撤", format="%.2f%%"),
-            "trend_status": st.column_config.TextColumn("📊 趋势定性"),
-            "chip_evolution": st.column_config.TextColumn("🔒 筹码演化"),
-        }
-    )
-else:
-    st.info("AI 哨兵前向账本暂无记录，可点击右上角【🌱 导入今日双创标的】或由凌晨流水线自动建仓入库。")
-
-st.markdown("---")
-
-# ══════════════════════════════════════════════
-# 模块 ④：【核心大杀器】大模型前向复盘与选股原则深度归因
-# ══════════════════════════════════════════════
-# ══════════════════════════════════════════════
-# 模块 ④：【核心大杀器】多模型前向复盘与 Google Drive 云端归档
-# ══════════════════════════════════════════════
-st.markdown("### 🧠 跨模型实盘前向推演：我们的选股原则中哪些最具实战暴利价值？")
-st.caption("🤖 由 ModelScope 双旗舰大模型（MiniMax-M1 深度思维反思 + Qwen3-30B 极速结构化指令）对所有历史前向批次标的进行横向对照，客观穿透哪些物理因子最有效，自动生成 Markdown 并同步归档至 **Google Drive** 与 DSW。")
-
-col_ai_btn, col_ai_quick, col_ai_info = st.columns([3.5, 3.5, 3])
-with col_ai_btn:
-    btn_generate_multi_report = st.button("🚀 生成多模型全景研报 & 同步 Google Drive", type="primary", use_container_width=True, help="同时召唤 MiniMax-M1 与 Qwen3-30B 双脑推演，生成多视角归因战报，并秒级直通保存到 Google Drive！")
-with col_ai_quick:
-    btn_eval_rules = st.button("⚡ 快速屏幕单兵推演 (30B 秒级)", use_container_width=True, help="快速在当前网页屏幕输出 30B 归因分析")
-with col_ai_info:
-    st.markdown("<div style='font-size:12px; color:#94A3B8; padding-top:6px;'>直通腾讯现价真值，100% 杜绝后视镜幻觉。</div>", unsafe_allow_html=True)
-
-# 历史研报查看与加载
-rep_dir = PROJECT_ROOT / "quant_data" / "reports"
-if not rep_dir.exists():
-    rep_dir = Path("/mnt/workspace/quant_data/reports")
-rep_files = sorted(list(rep_dir.glob("Tianyan_Sentinel_Review_*.md")), reverse=True) if rep_dir.exists() else []
-
-if rep_files:
-    with st.expander("📚 历史前向复盘研报文库 (已归档至 Google Drive)", expanded=False):
-        c_sel_rep, c_down_rep = st.columns([7, 3])
-        rep_map = {f.name: f for f in rep_files}
-        selected_rep_name = c_sel_rep.selectbox("选择历史复盘研报：", options=list(rep_map.keys()), index=0)
-        selected_rep_file = rep_map[selected_rep_name]
-        with open(selected_rep_file, "r", encoding="utf-8") as rf:
-            rep_text = rf.read()
-        c_down_rep.download_button(
-            label=f"💾 下载 {selected_rep_name}",
-            data=rep_text,
-            file_name=selected_rep_name,
-            mime="text/markdown",
-            use_container_width=True
-        )
-        st.markdown(sanitize_ai_report_markdown(rep_text))
-
-# 触发一键生成多模型全景研报并同步 Google Drive
-if btn_generate_multi_report:
-    if records_df.empty:
-        st.warning("当前账本无记录，无法执行归因推演。")
     else:
-        with st.spinner("🛰️ 正在召唤 ModelScope 双旗舰模型进行宏观与微观双重视角交叉推演，并将研报归档至 Google Drive..."):
-            try:
-                from scripts.generate_sentinel_multi_model_reports import generate_sentinel_multi_model_report
-                out_path = generate_sentinel_multi_model_report()
-                if out_path and out_path.exists():
-                    st.success(f"🎉 成功生成多模型前向复盘研报！已保存并同步至 Google Drive: `{out_path.name}`")
-                    with open(out_path, "r", encoding="utf-8") as f_out:
-                        content_md = f_out.read()
-                    st.markdown(sanitize_ai_report_markdown(content_md))
-                    st.rerun()
-            except Exception as e_rep:
-                st.error(f"研报生成异常: {e_rep}")
+        st.info("AI 哨兵前向账本暂无记录，可点击右上角【🌱 导入今日双创标的】或由凌晨流水线自动建仓入库。")
 
-# 快速屏幕单兵推演
-if btn_eval_rules:
-    if records_df.empty:
-        st.warning("当前账本无记录，无法执行归因推演。")
-    else:
-        with st.spinner("🛰️ 30B 参谋大脑正在深度复盘所有历史前向标的，解算量化原则价值贡献度..."):
-            eval_rows = []
-            for _, r in records_df.iterrows():
-                eval_rows.append(
-                    f"- 标的: {r['name']} ({r['code']}), 战法: {r['strategy']}, 建仓日: {r['entry_date']}, "
-                    f"初始成本: {r['entry_close']:.2f}, 当前现价: {r['latest_close']:.2f}, 浮盈: {r['pnl_pct']:+.2f}%, "
-                    f"持仓: T+{r['holding_days']}, 初始CPR: {r.get('entry_cpr', 0.0):.2f}, 初始BRI: {r.get('entry_bri', 0.0):.2f}, "
-                    f"初始LFS: {r.get('entry_lfs', 0.0):.2f}, 状态: {r.get('trend_status', '跟踪中')}"
-                )
-            context_text = "\n".join(eval_rows[:35])
+    st.markdown("---")
 
-            attribution_prompt = f"""你是由天衍全息量化系统驱动的 30B 首席战术参谋总长。
+    # ══════════════════════════════════════════════
+    # 模块 ④：【核心大杀器】多模型前向复盘与 Google Drive 云端归档
+    # ══════════════════════════════════════════════
+    st.markdown("### 🧠 跨模型实盘前向推演：我们的选股原则中哪些最具实战暴利价值？")
+    st.caption("🤖 由 ModelScope 双旗舰大模型（MiniMax-M1 深度思维反思 + Qwen3-30B 极速结构化指令）对所有历史前向批次标的进行横向对照，客观穿透哪些物理因子最有效，自动生成 Markdown 并同步归档至 **Google Drive** 与 DSW。")
+
+    col_ai_btn, col_ai_quick, col_ai_info = st.columns([3.5, 3.5, 3])
+    with col_ai_btn:
+        btn_generate_multi_report = st.button("🚀 生成多模型全景研报 & 同步 Google Drive", type="primary", use_container_width=True, help="同时召唤 MiniMax-M1 与 Qwen3-30B 双脑推演，生成多视角归因战报，并秒级直通保存到 Google Drive！")
+    with col_ai_quick:
+        btn_eval_rules = st.button("⚡ 快速屏幕单兵推演 (30B 秒级)", use_container_width=True, help="快速在当前网页屏幕输出 30B 归因分析")
+    with col_ai_info:
+        st.markdown("<div style='font-size:12px; color:#94A3B8; padding-top:6px;'>直通腾讯现价真值，100% 杜绝后视镜幻觉。</div>", unsafe_allow_html=True)
+
+    # 历史研报查看与加载
+    rep_dir = PROJECT_ROOT / "quant_data" / "reports"
+    if not rep_dir.exists():
+        rep_dir = Path("/mnt/workspace/quant_data/reports")
+    rep_files = sorted(list(rep_dir.glob("Tianyan_Sentinel_Review_*.md")), reverse=True) if rep_dir.exists() else []
+
+    if rep_files:
+        with st.expander("📚 历史前向复盘研报文库 (已归档至 Google Drive)", expanded=False):
+            c_sel_rep, c_down_rep = st.columns([7, 3])
+            rep_map = {f.name: f for f in rep_files}
+            selected_rep_name = c_sel_rep.selectbox("选择历史复盘研报：", options=list(rep_map.keys()), index=0)
+            selected_rep_file = rep_map[selected_rep_name]
+            with open(selected_rep_file, "r", encoding="utf-8") as rf:
+                rep_text = rf.read()
+            c_down_rep.download_button(
+                label=f"💾 下载 {selected_rep_name}",
+                data=rep_text,
+                file_name=selected_rep_name,
+                mime="text/markdown",
+                use_container_width=True
+            )
+            st.markdown(sanitize_ai_report_markdown(rep_text))
+
+    # 触发一键生成多模型全景研报并同步 Google Drive
+    if btn_generate_multi_report:
+        if records_df.empty:
+            st.warning("当前账本无记录，无法执行归因推演。")
+        else:
+            with st.spinner("🛰️ 正在召唤 ModelScope 双旗舰模型进行宏观与微观双重视角交叉推演，并将研报归档至 Google Drive..."):
+                try:
+                    from scripts.generate_sentinel_multi_model_reports import generate_sentinel_multi_model_report
+                    out_path = generate_sentinel_multi_model_report()
+                    if out_path and out_path.exists():
+                        st.success(f"🎉 成功生成多模型前向复盘研报！已保存并同步至 Google Drive: `{out_path.name}`")
+                        with open(out_path, "r", encoding="utf-8") as f_out:
+                            content_md = f_out.read()
+                        st.markdown(sanitize_ai_report_markdown(content_md))
+                        st.rerun()
+                except Exception as e_rep:
+                    st.error(f"研报生成异常: {e_rep}")
+
+    # 快速屏幕单兵推演
+    if btn_eval_rules:
+        if records_df.empty:
+            st.warning("当前账本无记录，无法执行归因推演。")
+        else:
+            with st.spinner("🛰️ 30B 参谋大脑正在深度复盘所有历史前向标的，解算量化原则价值贡献度..."):
+                eval_rows = []
+                for _, r in records_df.iterrows():
+                    eval_rows.append(
+                        f"- 标的: {r['name']} ({r['code']}), 战法: {r['strategy']}, 建仓日: {r['entry_date']}, "
+                        f"初始成本: {r['entry_close']:.2f}, 当前现价: {r['latest_close']:.2f}, 浮盈: {r['pnl_pct']:+.2f}%, "
+                        f"持仓: T+{r['holding_days']}, 初始CPR: {r.get('entry_cpr', 0.0):.2f}, 初始BRI: {r.get('entry_bri', 0.0):.2f}, "
+                        f"初始LFS: {r.get('entry_lfs', 0.0):.2f}, 状态: {r.get('trend_status', '跟踪中')}"
+                    )
+                context_text = "\n".join(eval_rows[:35])
+
+                attribution_prompt = f"""你是由天衍全息量化系统驱动的 30B 首席战术参谋总长。
 统帅要求对天衍 AI 哨兵自建仓以来的全部前向标的执行【前向实战复盘与选股原则归因评估】。
 
 【历史建仓标的实盘演化台账（包含初始物理张量与真实走出来的盈亏）】：
@@ -374,22 +380,110 @@ if btn_eval_rules:
   3. 建议首选哪一类战法阵列进行猛攻？
 """
 
-            try:
-                from core.providers.modelscope_client import ModelScopeClient
-                client = ModelScopeClient()
-                res = client.create_chat_completion(
-                    messages=[{"role": "user", "content": attribution_prompt}],
-                    model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
-                    temperature=0.1
-                )
-                thinking = res.get("thinking", "")
-                content = res.get("content", "")
-                
-                with st.chat_message("assistant", avatar="🧠"):
-                    if thinking:
-                        with st.expander("💡 参谋大脑深度反思与归因推演链", expanded=False):
-                            st.markdown(f"```text\n{thinking}\n```")
-                    st.markdown(sanitize_ai_report_markdown(content))
-                    st.caption(f"⚡ 推理引擎: {res.get('model', 'Qwen3-Coder-30B')} | ⏱️ 耗时: {res.get('duration_seconds', 0.0):.2f}s | ● 纯客观真值归因")
-            except Exception as e:
-                st.error(f"⚠️ 大模型调用提示: {e}")
+                try:
+                    from core.providers.modelscope_client import ModelScopeClient
+                    client = ModelScopeClient()
+                    res = client.create_chat_completion(
+                        messages=[{"role": "user", "content": attribution_prompt}],
+                        model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
+                        temperature=0.1
+                    )
+                    thinking = res.get("thinking", "")
+                    content = res.get("content", "")
+                    
+                    with st.chat_message("assistant", avatar="🧠"):
+                        if thinking:
+                            with st.expander("💡 参谋大脑深度反思与归因推演链", expanded=False):
+                                st.markdown(f"```text\n{thinking}\n```")
+                        st.markdown(sanitize_ai_report_markdown(content))
+                        st.caption(f"⚡ 推理引擎: {res.get('model', 'Qwen3-Coder-30B')} | ⏱️ 耗时: {res.get('duration_seconds', 0.0):.2f}s | ● 纯客观真值归因")
+                except Exception as e:
+                    st.error(f"⚠️ 大模型调用提示: {e}")
+
+# ══════════════════════════════════════════════
+# Tab 2：超短情绪雷达与异动前哨（Layer 8 打板连板融合体系）
+# ══════════════════════════════════════════════
+with tab_sentiment:
+    st.markdown("### ⚡ 全市场超短情绪温度计 & 题材催化前哨")
+    st.caption("🛡️ **无缝融合开源 Layer 8 军械库**：实时感知全市场涨停板封板质量、连板高度梯队、炸板率、题材归因与财联社电报，为前向战法提供宏观风控与超短流动性指引。")
+
+    from core.sentiment_radar import calculate_sentiment_summary, fetch_cls_telegraph, fetch_stock_monitors
+
+    # 顶部情绪指标卡
+    try:
+        sm = calculate_sentiment_summary()
+    except Exception as e_s:
+        sm = {"zt_count": 0, "zb_count": 0, "dt_count": 0, "break_rate": 0.0, "max_height": 0, "ladder": {}, "top_industries": []}
+
+    c_s1, c_s2, c_s3, c_s4, c_s5 = st.columns(5)
+    with c_s1:
+        st.metric("🔥 今日涨停家数", f"{sm.get('zt_count', 0)} 只", delta="打板先锋")
+    with c_s2:
+        st.metric("💥 炸板家数", f"{sm.get('zb_count', 0)} 只", delta=f"炸板率 {sm.get('break_rate', 0.0)}%", delta_color="inverse")
+    with c_s3:
+        st.metric("🧊 跌停家数", f"{sm.get('dt_count', 0)} 只", delta="冰点监控", delta_color="inverse")
+    with c_s4:
+        st.metric("👑 最高连板高度", f"{sm.get('max_height', 0)} 连板", delta="空间龙头")
+    with c_s5:
+        ladder_txt = " / ".join([f"{k}板({v})" for k, v in sm.get("ladder", {}).items()]) or "无梯队"
+        st.metric("🪜 连板梯队分布", ladder_txt)
+
+    st.markdown("---")
+
+    col_zt_left, col_news_right = st.columns([6.0, 4.0])
+
+    with col_zt_left:
+        st.markdown("#### 🎯 实时涨停池精选与连板梯队")
+        zt_list = sm.get("zt_samples", [])
+        if zt_list:
+            zt_df = pd.DataFrame(zt_list)[["code", "name", "price", "pct", "limit_days", "first_seal", "industry"]]
+            st.dataframe(
+                zt_df,
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "code": st.column_config.TextColumn("代码"),
+                    "name": st.column_config.TextColumn("名称"),
+                    "price": st.column_config.NumberColumn("现价", format="%.2f"),
+                    "pct": st.column_config.NumberColumn("涨幅", format="%.2f%%"),
+                    "limit_days": st.column_config.NumberColumn("连板数", format="%d板"),
+                    "first_seal": st.column_config.TextColumn("首封时间"),
+                    "industry": st.column_config.TextColumn("所属行业")
+                }
+            )
+        else:
+            st.info("当前暂无涨停池数据或非交易时段。")
+
+        # 重点监控与异动排雷
+        st.markdown("#### ⚠️ 交易所重点监控与风险警示池 (一票否决参考)")
+        mon_list = fetch_stock_monitors()
+        if mon_list:
+            mon_df = pd.DataFrame(mon_list)[["code", "name", "start", "end"]]
+            st.dataframe(
+                mon_df.head(10),
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "code": st.column_config.TextColumn("标的代码"),
+                    "name": st.column_config.TextColumn("标的名称"),
+                    "start": st.column_config.TextColumn("监控生效起"),
+                    "end": st.column_config.TextColumn("监控生效止")
+                }
+            )
+        else:
+            st.success("🟢 暂无生效中的交易所严重异动重点监控标的。")
+
+    with col_news_right:
+        st.markdown("#### ⚡ 财联社 7×24 实时财经电报 (本地签名直通)")
+        news_items = fetch_cls_telegraph(15)
+        if news_items:
+            for item in news_items:
+                st.markdown(f"""
+                <div style="background: rgba(15, 23, 42, 0.6); border-left: 3px solid #38BDF8; padding: 6px 10px; margin-bottom: 8px; border-radius: 4px;">
+                    <div style="font-size: 11px; color: #38BDF8; font-weight: 700;">⏱️ {item['time']}</div>
+                    <div style="font-size: 12px; color: #F1F5F9; font-weight: 600; margin-top: 2px;">{item['title']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("正在获取财联社即时快讯...")
+
