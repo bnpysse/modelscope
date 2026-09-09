@@ -68,6 +68,20 @@ def extract_sentinel_performance_summary() -> Dict[str, Any]:
             "top_winner": grp.sort_values("pnl_pct", ascending=False).iloc[0]["name"] if not grp.empty else "N/A"
         })
 
+    # 战法分层统计 (四大战法横向对比)
+    strat_stats = []
+    for st_name, grp in df.groupby("strategy"):
+        strat_stats.append({
+            "strategy": st_name,
+            "count": len(grp),
+            "avg_pnl": round(grp["pnl_pct"].mean(), 2),
+            "win_rate": round((grp["pnl_pct"] > 0).mean() * 100.0, 1),
+            "max_pnl": round(grp["pnl_pct"].max(), 2),
+            "min_pnl": round(grp["pnl_pct"].min(), 2),
+            "top_stock": grp.sort_values("pnl_pct", ascending=False).iloc[0]["name"] if not grp.empty else "N/A"
+        })
+    strat_stats.sort(key=lambda x: x["avg_pnl"], reverse=True)
+
     # 标的详情 (格式化为 Prompt 输入文本)
     record_lines = []
     for _, r in df.iterrows():
@@ -86,6 +100,7 @@ def extract_sentinel_performance_summary() -> Dict[str, Any]:
         "total_count": len(df),
         "records_text": "\n".join(record_lines),
         "batch_stats": batch_stats,
+        "strat_stats": strat_stats,
         "top_winners": top_winners,
         "bottom_losers": bottom_losers,
         "df": df
@@ -96,35 +111,56 @@ from core.sentiment_radar import calculate_sentiment_summary, fetch_cls_telegrap
 
 
 def build_system_prompt_for_review(summary_data: Dict[str, Any], sentiment_data: Optional[Dict[str, Any]] = None) -> str:
-    """组织供大模型分析的高维客观物理真值与宏观超短情绪 Prompt"""
+    """组织供大模型分析的高维客观物理真值、战法对比与宏观超短情绪 Prompt"""
     batch_info = "\n".join([
         f"- 批次 {b['batch']}: 共 {b['count']} 只标的, 平均浮盈: {b['avg_pnl']:+.2f}%, "
         f"最大盈利: {b['max_pnl']:+.2f}%, 胜率: {b['win_rate']}%, 领跑标的: {b['top_winner']}"
-        for b in summary_data["batch_stats"]
+        for b in summary_data.get("batch_stats", [])
     ])
 
-    # 宏观超短情绪与题材主线信息
+    strat_info = "\n".join([
+        f"- {s['strategy']}: 共 {s['count']} 只, 平均浮盈: {s['avg_pnl']:+.2f}%, 胜率: {s['win_rate']}%, 最高盈利: {s['max_pnl']:+.2f}%, 领跑标的: {s['top_stock']}"
+        for s in summary_data.get("strat_stats", [])
+    ])
+
+    # 宏观超短情绪、题材主线与监管异动监控 (第四维度上下文)
     sentiment_block = ""
     if sentiment_data:
         ladder_str = ", ".join([f"{k}连板:{v}家" for k, v in sentiment_data.get("ladder", {}).items()]) or "无连板"
         ind_str = ", ".join([f"{x[0]}({x[1]}家)" for x in sentiment_data.get("top_industries", [])]) or "分散"
+        
+        # 监管重点监控名单
+        monitors = sentiment_data.get("monitors", [])
+        monitor_str = ", ".join([f"{m['name']}({m['code']})" for m in monitors[:8]]) if monitors else "无活跃重点监控"
+        
+        # 财联社要闻头条摘要 (前 5 条)
+        news_items = sentiment_data.get("news", [])
+        news_block = "\n".join([f"  * [{n.get('time', '')}] {n.get('title', '')}" for n in news_items[:5]]) if news_items else "  * 暂无重大突发要闻"
+
         sentiment_block = f"""
-【全市场超短情绪温度计与题材主线】：
-- 涨停家数: {sentiment_data.get('zt_count', 0)} 家 | 炸板家数: {sentiment_data.get('zb_count', 0)} 家 | 炸板率: {sentiment_data.get('break_rate', 0.0)}%
-- 跌停家数: {sentiment_data.get('dt_count', 0)} 家 | 最高连板高度: {sentiment_data.get('max_height', 0)} 连板
-- 连板梯队分布: [{ladder_str}]
-- 领涨主线题材/行业: [{ind_str}]
-- 重点监控/异动警示标的数: {len(sentiment_data.get('monitors', []))} 只
+【第四维度上下文：全市场超短情绪周期、题材主线与监管异动】：
+- 情绪周期量化指标: 涨停 {sentiment_data.get('zt_count', 0)} 家 | 炸板 {sentiment_data.get('zb_count', 0)} 家 | 炸板率 {sentiment_data.get('break_rate', 0.0)}% | 跌停 {sentiment_data.get('dt_count', 0)} 家
+- 连板生态高度: 最高 {sentiment_data.get('max_height', 0)} 连板 | 梯队分布: [{ladder_str}]
+- 市场领涨主线/高爆发行业: [{ind_str}]
+- 交易所重点监控与严重异常波动池 (一票否决避险名单): [{monitor_str}]
+- 实时要闻热点与政策驱动导向:
+{news_block}
 """
 
     prompt = f"""你是由天衍全息量化系统驱动的首席量化推演大脑与战术参谋长。
 现在是收盘后的战略前向复盘时刻。统帅要求对天衍 AI 哨兵自建仓以来的所有批次标的（重点关注创业板 300 与科创板 688）执行【多维度深度实盘前向归因研报】。
 
+【统帅战略定力与核心导向】：
+在当今 A 股市场，纯粹的极短线/打板与分秒级高频博弈完全是顶级量化游资和算法程序的天下，普通投资者参与极短线博弈容易沦为流动性牺牲品。
+因此，天衍系统的立足之本在于【确定性物理筹码选股战术】（通过微积分微分场求解 CPR 锁仓刚性、BRI 断层真空、κCYC 斐波收敛、ΔCYS 盈亏剪刀差），追求波段与中短期（T+5 至 T+22 乃至 T+66）的扎实正期望超额。
+**第四维度的打板情绪、连板高度与题材归因，必须作为【大盘风向研判】与【选股排雷避险】的背景上下文，而绝对不可喧宾夺主！**
+
 {sentiment_block}
 
-【市场与哨兵批次总体态势】：
-- 历史追踪总标的数: {summary_data['total_count']} 只
-- 各批次实盘战况:
+【四大选股战法实战收益比横向对决】：
+{strat_info}
+
+【市场与哨兵各批次实盘战况】：
 {batch_info}
 
 【历史建仓标的实盘台账真值清单（含初始建仓物理张量与当前实盘盈亏）】：
@@ -133,28 +169,33 @@ def build_system_prompt_for_review(summary_data: Dict[str, Any], sentiment_data:
 【推演研报撰写核心准则与军规】：
 1. 严禁使用任何 ASCII 字符方框画图（杜绝任何 +---+ 字符方块），统一使用清晰的 Markdown 三级标题与无序列表或数据加粗；
 2. 杜绝任何空泛研报废话，必须直接指出具体股票名称、代码、物理数值（CPR、BRI、LFS 等）；
-3. 必须包含以下四大部分：
+3. 必须包含以下五大部分：
 
-### 🎯 一、 领涨先锋特征深度归因（哪些原则最具暴利价值？）
-- 穿透真实走势最强（正超额收益最高）的标的，它们在建仓时具有哪些**完全一致的量化物理共性**？
-- 从四大战法（极低换手锁仓、脉冲资金接力、断层真空回踩、斐波共振）中，结合当前涨停梯队与题材主线，明确裁决哪 1~2 种战法在当前震荡分化行情中兑现度最高？
+### ⚔️ 一、 四大战法实战收益比横向对决与科学归因
+- 对比四大战法（👑 超级主升、🌟 物理真空、⚡ 超导死锁、💎 战略黄金坑）的胜率与平均收益比；
+- 为什么主升与真空在当前震荡市中正超额显著？为什么黄金坑全军覆没？（从筹码刚性与趋势动量角度给出确切物理诠释）。
 
-### ⚠️ 二、 破位与滞涨标的反思（触犯了哪些隐性暗礁？）
-- 严厉剖析回撤居前或走势停滞的标的，当时选股时忽视了什么隐患（例如上方套牢盘太重、换手率过大导致筹码松动、或伪突破）？
+### 🎯 二、 领涨先锋特征深度归因（哪些原则最具暴利价值？）
+- 穿透真实走势最强（正超额最高）的标的，它们在建仓时具有哪些**完全一致的量化物理共性**？
+- 结合情绪主线与题材驱动，分析物理筹码刚性如何借力板块东风实现主升爆发？
+
+### ⚠️ 三、 破位与滞涨标的反思（触犯了哪些隐性暗礁与监管红线？）
+- 严厉剖析回撤居前或走势停滞的标的，当时选股时忽视了什么隐患（例如上方套牢盘太重、换手率过大导致筹码松动、或弱势震荡市中盲目抄底）？
 - 确立必须在选股算法中追加的“一票否决”硬性红线（结合交易所重点监控名单与异动警示）。
 
-### 🚀 三、 双创高弹性战场专项穿透（创业板 300 / 科创板 688）
+### 🚀 四、 双创高弹性战场专项穿透（创业板 300 / 科创板 688）
 - 针对 20% 涨跌幅限制的双创板块标的，分析其波动幅度和筹码流动规律；
-- 给出双创标的与主板标的在参数设置上的本质区别。
+- 给出双创标的与主板标的在参数设置上的本质区别（双创标的 CPR 与 LFS 应如何调整？）。
 
-### 🏹 四、 统帅当下选股军令指引（最优参数阈值建议）
-- 给统帅当下周选股提供具体的量化数值门槛：
+### 🏹 五、 统帅当下选股军令指引（最优战术阵列与参数门槛）
+- 给统帅当下选股提供明确的量化数值门槛：
   1. CPR（筹码锁仓刚性）建议阈值下限；
   2. BRI（断层真空度）建议阈值下限；
   3. LFS（浮筹比例）建议安全区间；
-  4. 结合连板高度与题材主线，推荐统帅重点布防的核心方向。
+  4. 明确当前环境下四大战法的配置权重倾斜比例。
 """
     return prompt
+
 
 
 def generate_sentinel_multi_model_report() -> Path:
@@ -174,13 +215,15 @@ def generate_sentinel_multi_model_report() -> Path:
         print("⚠️ 当前无在踪标的，无法生成复盘研报。")
         return None
 
-    # 3. 获取全市场超短情绪与题材主线
-    print("🌡️ 正在拉取全市场涨跌停梯队、炸板率与异动监控...")
+    # 3. 获取全市场超短情绪、题材主线与监管异动
+    print("🌡️ 正在拉取全市场涨跌停梯队、炸板率、题材主线与异动监控...")
     try:
         sentiment_summary = calculate_sentiment_summary()
         monitors = fetch_stock_monitors()
         sentiment_summary["monitors"] = monitors
-        print(f"✓ 情绪温度计就绪: 涨停 {sentiment_summary['zt_count']} 家, 炸板 {sentiment_summary['zb_count']} 家 (炸板率 {sentiment_summary['break_rate']}%)")
+        news = fetch_cls_telegraph(page_size=8)
+        sentiment_summary["news"] = news
+        print(f"✓ 情绪温度计就绪: 涨停 {sentiment_summary['zt_count']} 家, 炸板 {sentiment_summary['zb_count']} 家 (炸板率 {sentiment_summary['break_rate']}%), 异动监控 {len(monitors)} 家, 要闻 {len(news)} 条")
     except Exception as e_sm:
         print(f"⚠️ 情绪雷达获取提示: {e_sm}")
         sentiment_summary = None
@@ -254,24 +297,32 @@ def generate_sentinel_multi_model_report() -> Path:
     for _, r in summary_data["bottom_losers"].iterrows():
         bottom_picks_table += f"| **{r['name']}** | `{r['code']}` | {r['entry_date']} | {r['strategy']} | {r['entry_close']:.2f} | {r['latest_close']:.2f} | <font color='#EF4444'>**{r['pnl_pct']:+.2f}%**</font> | {r.get('entry_cpr', 0.0):.2f} | {r.get('entry_bri', 0.0):.2f} | {r.get('trend_status', '')} |\n"
 
+    strat_summary_table = "| 所属战法 | 跟踪标的数 | 平均浮盈 | 浮盈胜率 | 最大盈利 | 最大回撤 | 领跑标的 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n"
+    for s in summary_data.get("strat_stats", []):
+        strat_summary_table += f"| **{s['strategy']}** | {s['count']} 只 | **{s['avg_pnl']:+.2f}%** | {s['win_rate']}% | +{s['max_pnl']:.2f}% | {s['min_pnl']:.2f}% | **{s['top_stock']}** |\n"
+
     report_md = f"""# 🔭 天衍五维 · AI 哨兵前向实战跟踪与多模型深度归因研报
 
 - **研报生成日期**: `{today_str}`
 - **生成时间戳**: `{now_str}`
 - **在踪标的底座**: 全市场四大战法前向选股池（含创业板 300 与科创板 688 专项特化）
+- **战略定力定位**: 以确定性物理筹码场选股为本，将全市场超短打板情绪与题材归因作为宏观风向与排雷红线
 - **客观数据源**: 100% 真实实盘分时与盘中腾讯行情现价直通，杜绝任何未来函数与后视镜幻觉
 
 ---
 
-## 📊 一、 AI 哨兵历史批次前向实战战况总览
+## 📊 一、 AI 哨兵历史批次实战战况与四大战法天梯榜
 
-### 1. 各批次运行大盘点
+### 1. 四大选股战法实战收益比横向对决
+{strat_summary_table}
+
+### 2. 各建仓批次运行大盘点
 {batch_summary_table}
 
-### 2. 当前实战领涨先锋 Top 5
+### 3. 当前实战领涨先锋 Top 5
 {top_picks_table}
 
-### 3. 当前回撤与滞涨探底标的
+### 4. 当前回撤与滞涨探底标的
 {bottom_picks_table}
 
 ---

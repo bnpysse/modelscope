@@ -411,3 +411,59 @@ def extract_daily_top_picks_from_snapshot(
         picks.append(d)
 
     return picks
+
+
+def auto_seed_missing_batches(
+    snapshot_path: Path,
+    tracker: Optional[ForwardSentinelTracker] = None
+) -> Dict[str, Any]:
+    """
+    盘后/开机自适应补齐与自动建仓机制：
+    1. 自动读取快照文件中的最新交易日 (latest_date)；
+    2. 查询数据库中是否已存在该交易日的建仓批次；
+    3. 若不存在，则自动提取全市场 Top 标的 + 双创 (300/688) 特化标的，执行无感入池；
+    4. 自动裂变生成专属自选池并核算现价。
+    """
+    if tracker is None:
+        tracker = sentinel_tracker
+
+    if not snapshot_path.exists():
+        return {"status": "skipped", "reason": "snapshot_not_found"}
+
+    con = duckdb.connect()
+    try:
+        latest_date_res = con.execute(f"SELECT MAX(date) FROM read_parquet('{snapshot_path}')").fetchone()
+        latest_date = str(latest_date_res[0]) if latest_date_res and latest_date_res[0] else None
+    except Exception as e:
+        return {"status": "error", "reason": str(e)}
+    finally:
+        con.close()
+
+    if not latest_date:
+        return {"status": "skipped", "reason": "no_date_in_snapshot"}
+
+    # 检查该日期是否已经建仓
+    con_db = tracker._get_con()
+    try:
+        existing_cnt = con_db.execute("SELECT COUNT(*) FROM sentinel_forward_records WHERE entry_date = ?", [latest_date]).fetchone()[0]
+    finally:
+        con_db.close()
+
+    if existing_cnt > 0:
+        return {"status": "already_exists", "date": latest_date, "count": existing_cnt}
+
+    # 执行全自动建仓：全市场 Top 标的 + 双创 300/688 重点聚焦标的
+    all_picks = extract_daily_top_picks_from_snapshot(snapshot_path, board_filter="all")
+    star_picks = extract_daily_top_picks_from_snapshot(snapshot_path, board_filter="chinext_star")
+    combined_picks = all_picks + star_picks
+
+    added_cnt = tracker.seed_daily_picks(latest_date, combined_picks)
+    tracker.refresh_realtime_pnl()
+    tracker.sync_to_watchlist("🤖 AI 哨兵自选跟踪池", sync_by_batch=True)
+
+    return {
+        "status": "seeded",
+        "date": latest_date,
+        "added_count": added_cnt
+    }
+

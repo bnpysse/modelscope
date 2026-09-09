@@ -145,7 +145,7 @@ with c_title:
 
 # 自动/手动刷新实时行情
 with c_actions:
-    col_act1, col_act2, col_act3 = st.columns([1.1, 1.1, 1.2])
+    col_act1, col_act2, col_act3 = st.columns([1.1, 1.1, 1.3])
     with col_act1:
         if st.button("⚡ 实时现价核算", help="直通腾讯行情接口，秒级刷新当前在踪标的的最新盘中现价与真实浮盈", use_container_width=True, type="primary"):
             from core import forward_sentinel_tracker
@@ -163,7 +163,7 @@ with c_actions:
             st.toast("✅ 已按【建仓批次】分别裂变建立专属自选跟踪池！")
             st.rerun()
     with col_act3:
-        if st.button("🌱 建立今日(9-8)追踪池", help="为今日(9-8)按四大战法建立全新批次观察池（含双创高弹性标的）", use_container_width=True):
+        if st.button("🌱 自动/补齐最新建仓", help="自动检测最新物化快照，若最新交易日未建仓则自动按四大战法新建仓（含双创高弹性标的）", use_container_width=True):
             snap_path = Path("/mnt/workspace/quant_data/full_market_snapshot.parquet")
             if not snap_path.exists():
                 snap_path = PROJECT_ROOT / "quant_data" / "full_market_snapshot.parquet"
@@ -171,17 +171,14 @@ with c_actions:
                 from core import forward_sentinel_tracker
                 import importlib
                 importlib.reload(forward_sentinel_tracker)
-                today_str = "2026-09-08"
-                all_picks = forward_sentinel_tracker.extract_daily_top_picks_from_snapshot(snap_path, board_filter="all")
-                star_picks = forward_sentinel_tracker.extract_daily_top_picks_from_snapshot(snap_path, board_filter="chinext_star")
-                
-                # 合并建仓列表
-                combined_picks = all_picks + star_picks
-                cnt = forward_sentinel_tracker.sentinel_tracker.seed_daily_picks(today_str, combined_picks)
-                forward_sentinel_tracker.sentinel_tracker.refresh_realtime_pnl()
-                forward_sentinel_tracker.sentinel_tracker.sync_to_watchlist("🤖 AI 哨兵自选跟踪池", sync_by_batch=True)
-                st.toast(f"✅ 成功建立今日({today_str})新批次观察池，新增入库 {cnt} 只标的！")
-                st.rerun()
+                res_seed = forward_sentinel_tracker.auto_seed_missing_batches(snap_path)
+                if res_seed.get("status") == "seeded":
+                    st.toast(f"✅ 成功补齐最新({res_seed.get('date')})新批次观察池，新增入库 {res_seed.get('added_count')} 只标的！")
+                    st.rerun()
+                elif res_seed.get("status") == "already_exists":
+                    st.info(f"🟢 最新交易日 ({res_seed.get('date')}) 已建仓完毕（共 {res_seed.get('count')} 只标的在踪），无需重复录入。")
+                else:
+                    st.warning(f"建仓巡检状态: {res_seed}")
             else:
                 st.error("未找到 full_market_snapshot.parquet 快照！")
 
@@ -215,6 +212,25 @@ tab_forward, tab_sentiment = st.tabs([
 ])
 
 with tab_forward:
+    # 战略战法天梯榜横向对比
+    strat_dict = stats.get("strategy_breakdown", {})
+    if strat_dict:
+        st.markdown("#### ⚔️ 四大核心战法实盘实效天梯榜 (前向真实收益对决)")
+        c_cols = st.columns(len(strat_dict))
+        for idx, (st_name, st_val) in enumerate(strat_dict.items()):
+            with c_cols[idx]:
+                w_rate = st_val.get("win_rate", 0.0)
+                a_pnl = st_val.get("avg_pnl", 0.0)
+                color = "#22C55E" if a_pnl > 0 else "#EF4444"
+                border_color = "rgba(34, 197, 94, 0.4)" if a_pnl > 0 else "rgba(255, 255, 255, 0.1)"
+                st.markdown(f"""
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid {border_color}; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+                    <div style="font-size: 13px; font-weight: 700; color: #F8FAFC;">{st_name}</div>
+                    <div style="font-size: 11px; color: #94A3B8; margin-top: 2px;">入池标的: <b>{st_val.get('count', 0)}</b> 只</div>
+                    <div style="font-size: 18px; font-weight: 800; color: {color}; margin: 4px 0;">{a_pnl:+.2f}%</div>
+                    <div style="font-size: 11px; color: #CBD5E1;">实盘胜率: <b>{w_rate:.1f}%</b> | 最高: <b>+{st_val.get('max_pnl', 0.0):.2f}%</b></div>
+                </div>
+                """, unsafe_allow_html=True)
     # ══════════════════════════════════════════════
     # 模块 ③：板块特化筛选与批次管理表
     # ══════════════════════════════════════════════
@@ -345,7 +361,7 @@ with tab_forward:
         if records_df.empty:
             st.warning("当前账本无记录，无法执行归因推演。")
         else:
-            with st.spinner("🛰️ 30B 参谋大脑正在深度复盘所有历史前向标的，解算量化原则价值贡献度..."):
+            with st.spinner("🛰️ 30B 参谋大脑正在深度复盘所有历史前向标的，结合超短情绪背景解算战法价值贡献度..."):
                 eval_rows = []
                 for _, r in records_df.iterrows():
                     eval_rows.append(
@@ -356,8 +372,30 @@ with tab_forward:
                     )
                 context_text = "\n".join(eval_rows[:35])
 
+                # 提取战法对比
+                strat_text = "\n".join([
+                    f"- {k}: 样本 {v.get('count',0)}只, 平均浮盈 {v.get('avg_pnl',0):+.2f}%, 胜率 {v.get('win_rate',0):.1f}%"
+                    for k, v in stats.get("strategy_breakdown", {}).items()
+                ])
+
+                # 提取超短情绪背景
+                try:
+                    from core.sentiment_radar import calculate_sentiment_summary
+                    cur_sm = calculate_sentiment_summary()
+                    sm_text = f"今日涨停 {cur_sm.get('zt_count',0)}家, 炸板率 {cur_sm.get('break_rate',0)}%, 最高连板 {cur_sm.get('max_height',0)}板, 领涨行业: {cur_sm.get('top_industries',[])[:3]}"
+                except Exception:
+                    sm_text = "情绪温度平稳"
+
                 attribution_prompt = f"""你是由天衍全息量化系统驱动的 30B 首席战术参谋总长。
-统帅要求对天衍 AI 哨兵自建仓以来的全部前向标的执行【前向实战复盘与选股原则归因评估】。
+统帅要求对天衍 AI 哨兵自建仓以来的全部前向标的执行【前向实战复盘与四大战法归因评估】。
+
+【统帅战略定力与核心导向】：
+在当今 A 股市场，极短线与分秒级打板博弈为顶级量化高频程序主导，普通资金不可盲目追随；
+天衍系统的根基在于【确定性物理筹码选股战术】（CPR 锁仓刚性、BRI 断层真空、κCYC 斐波收敛），追求波段与中短期（T+5 至 T+22）正期望超额。
+全市场的超短打板情绪与题材归因（{sm_text}）必须作为【大盘风向研判】与【排雷红线】，以辅助物理选股战术！
+
+【四大选股战法实盘收益比真实战况】：
+{strat_text}
 
 【历史建仓标的实盘演化台账（包含初始物理张量与真实走出来的盈亏）】：
 {context_text}
@@ -365,19 +403,20 @@ with tab_forward:
 【战役复盘与原则归因研判指令】：
 请严格遵循实战客观事实，杜绝任何模板废话，直接输出三大板块（统一使用 ### 三级标题，严禁输出任何 ASCII 字符方框，数据采用列表或加粗呈现）：
 
-### 🎯 一、 领涨先锋特征归因（哪些原则最具价值？）
-- 分析真实走势最好、超额收益最显著的标的，它们在建仓时具有哪些**绝对共同的物理量化特征**？（高 CPR 刚性锁定、高 BRI 断层真空、低 LFS 浮筹？）
-- 明确指出：在我们的四大战法与五维物理体系中，**哪 1~2 个核心原则是产生暴利的最强引擎**？
+### ⚔️ 一、 四大战法实战收益比横向对决（哪种战法最具价值？）
+- 分析真实走势最好、超额收益最显著的标的，它们在建仓时具有哪些**绝对共同的物理量化特征**？
+- 对比四大战法表现：为什么超级主升与物理真空领跑？为什么战略黄金坑在震荡市遭遇阻力？给出确凿的物理筹码动量诠释。
 
-### ⚠️ 二、 破位滞涨标的反思（触犯了哪些隐性隐患？）
+### ⚠️ 二、 破位与滞涨标的反思（触犯了哪些隐性暗礁与排雷红线？）
 - 深入剖析走势落后、发生回撤或洗盘受阻的标的，当时选股时忽略了什么潜在风险？
-- 指出必须增设的“一票否决”排雷红线。
+- 确立必须增设的“一票否决”排雷红线（上方筹码密集套牢峰、换手率急剧异常放大等）。
 
-### 🏹 三、 统帅当下周选股决策指引（当务之急该怎么选？）
+### 🏹 三、 统帅当下选股决策指引（当务之急该怎么选？）
 - 结合当前最新行情特征，尤其针对【创业板 (300) 与科创板 (688)】的高弹性标的，给出统帅在本周选股时的明确参数阈值推荐：
   1. CPR 刚性度必须大于多少？
   2. BRI 断层真空度必须大于多少？
-  3. 建议首选哪一类战法阵列进行猛攻？
+  3. LFS 安全阈值区间是多少？
+  4. 建议四大战法的配置权重倾斜比例。
 """
 
                 try:

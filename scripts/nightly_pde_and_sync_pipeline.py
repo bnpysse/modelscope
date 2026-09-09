@@ -228,12 +228,11 @@ def materialize_and_sync_to_dsw(df_merged: pd.DataFrame):
 
     # 1.5 自动驱动 AI 哨兵前向跟踪账本 (Forward Sentinel Tracker)
     try:
-        from core.forward_sentinel_tracker import sentinel_tracker, extract_daily_top_picks_from_snapshot
-        updated_cnt = sentinel_tracker.update_forward_tracking(latest_date=time.strftime('%Y-%m-%d'), snapshot_df=df_merged)
-        daily_picks = extract_daily_top_picks_from_snapshot(SNAPSHOT_PATH)
-        added_cnt = sentinel_tracker.seed_daily_picks(entry_date=time.strftime('%Y-%m-%d'), picks=daily_picks)
-        sentinel_tracker.sync_to_watchlist("🤖 AI 哨兵自选跟踪池")
-        log(f"🎯 [AI 哨兵前向跟踪] 历史标的收益更新: {updated_cnt} 条 | 今日新建仓入池: {added_cnt} 条")
+        from core.forward_sentinel_tracker import sentinel_tracker, auto_seed_missing_batches
+        latest_date_in_df = str(df_merged["date"].max()) if "date" in df_merged.columns else time.strftime('%Y-%m-%d')
+        updated_cnt = sentinel_tracker.update_forward_tracking(latest_date=latest_date_in_df, snapshot_df=df_merged)
+        seed_res = auto_seed_missing_batches(SNAPSHOT_PATH, tracker=sentinel_tracker)
+        log(f"🎯 [AI 哨兵前向跟踪] 历史标的收益更新: {updated_cnt} 条 | 新建仓状态: {seed_res}")
     except Exception as e_sentinel:
         log(f"⚠️ [AI 哨兵前向跟踪] 执行提示: {e_sentinel}")
 
