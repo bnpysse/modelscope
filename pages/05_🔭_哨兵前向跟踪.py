@@ -120,6 +120,135 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from core.sentiment_radar import fetch_intraday_minute_chart
+
+
+@st.dialog("📈 标的实时分时走势与量能全息透视", width="large")
+def show_stock_intraday_modal(stock_code: str, stock_name: str = ""):
+    """点击标的弹出的当日毫秒级实时分时行情全息弹窗"""
+    with st.spinner(f"正在拉取 {stock_name}({stock_code}) 当日全部分时行情..."):
+        info = fetch_intraday_minute_chart(stock_code)
+    
+    if "error" in info or not info.get("times"):
+        st.warning(f"未能获取到 {stock_name} ({stock_code}) 的当日分时数据（可能是停牌或接口限制）。")
+        return
+
+    name = info.get("name") or stock_name
+    prev_c = info.get("prev_close", 0.0)
+    cur_p = info.get("latest_price", 0.0)
+    pct = info.get("pct_chg", 0.0)
+    high_p = info.get("high", 0.0)
+    low_p = info.get("low", 0.0)
+    vol_wan = round(info.get("volume", 0.0) / 10000.0, 1)
+    amt_yi = round(info.get("amount", 0.0) / 100000000.0, 2)
+    color = "#22C55E" if pct >= 0 else "#EF4444"
+
+    # 顶栏实时指标卡
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.metric("标的", f"{name}", f"{stock_code}")
+    m2.metric("现价", f"¥{cur_p:.2f}", f"{pct:+.2f}%")
+    m3.metric("昨收", f"¥{prev_c:.2f}")
+    m4.metric("最高 / 最低", f"¥{high_p:.2f}", f"¥{low_p:.2f}")
+    m5.metric("成交量", f"{vol_wan} 万股")
+    m6.metric("成交额", f"{amt_yi} 亿元")
+
+    # 绘制高科技深色分时图 (分时价格 + 分时均线 + 成交量)
+    times = info.get("times", [])
+    prices = info.get("prices", [])
+    vwap = info.get("vwap", [])
+    volumes = info.get("volumes", [])
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.04,
+        row_heights=[0.75, 0.25]
+    )
+
+    # 1. 昨收基准虚线
+    if prev_c > 0:
+        fig.add_hline(
+            y=prev_c, line_dash="dash", line_color="rgba(148, 163, 184, 0.5)",
+            line_width=1, row=1, col=1
+        )
+
+    # 2. 分时现价曲线 (带半透明填充)
+    fill_color = "rgba(34, 197, 94, 0.12)" if pct >= 0 else "rgba(239, 68, 68, 0.12)"
+    line_color = "#22C55E" if pct >= 0 else "#EF4444"
+    fig.add_trace(
+        go.Scatter(
+            x=times, y=prices,
+            mode='lines',
+            name='现价',
+            line=dict(color=line_color, width=2),
+            fill='tozeroy' if prev_c <= 0 else None,
+            fillcolor=fill_color,
+            hoverinfo='x+y'
+        ),
+        row=1, col=1
+    )
+
+    # 3. 分时 VWAP 均线 (黄色)
+    if vwap and len(vwap) == len(times):
+        fig.add_trace(
+            go.Scatter(
+                x=times, y=vwap,
+                mode='lines',
+                name='分时均价 (VWAP)',
+                line=dict(color='#FACC15', width=1.5, dash='dot'),
+                hoverinfo='x+y'
+            ),
+            row=1, col=1
+        )
+
+    # 4. 下方成交量柱状图
+    vol_colors = []
+    for i in range(len(prices)):
+        if i == 0:
+            vol_colors.append(line_color)
+        else:
+            vol_colors.append('#22C55E' if prices[i] >= prices[i-1] else '#EF4444')
+
+    fig.add_trace(
+        go.Bar(
+            x=times, y=volumes,
+            name='成交量 (股)',
+            marker_color=vol_colors,
+            opacity=0.8
+        ),
+        row=2, col=1
+    )
+
+    # 布局美化
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(15, 23, 42, 0.8)",
+        plot_bgcolor="rgba(15, 23, 42, 0.95)",
+        height=420,
+        margin=dict(l=10, r=10, t=10, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis2=dict(
+            showgrid=True,
+            gridcolor="rgba(255, 255, 255, 0.05)",
+            nticks=8
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="rgba(255, 255, 255, 0.08)",
+            tickformat=".2f"
+        ),
+        yaxis2=dict(
+            showgrid=True,
+            gridcolor="rgba(255, 255, 255, 0.05)",
+            showticklabels=False
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
 engine = get_tianyan_engine()
 
 # 侧边栏
@@ -142,6 +271,7 @@ c_title, c_actions = st.columns([6.0, 4.0])
 with c_title:
     st.markdown("### 🔭 天衍 AI 哨兵前向跟踪与趋势验证台账")
     st.caption("🛡️ **前向实战闭环与中长期趋势验证**：每日四大战法 Top 标的自动建仓存证，追踪 **1个月 (T+22)、1季度 (T+66)、半年 (T+132)** 战略趋势的形成与筹码健康度。")
+
 
 # 自动/手动刷新实时行情
 with c_actions:
@@ -277,10 +407,32 @@ with tab_forward:
         ]
         show_df = view_df[display_cols].copy()
 
-        st.dataframe(
+        # 增加一行便捷穿透动作条：点击或选择即可秒级弹出走势图
+        c_pick_label, c_pick_box, c_pick_btn = st.columns([2.5, 5.5, 2.0])
+        with c_pick_label:
+            st.markdown("<div style='font-size:12px; color:#38BDF8; font-weight:700; padding-top:6px;'>🔍 标的分时行情全息透视：</div>", unsafe_allow_html=True)
+        with c_pick_box:
+            stock_options = [f"{r['code']} - {r['name']} ({r['strategy']})" for _, r in show_df.iterrows()]
+            selected_stock_str = st.selectbox(
+                "选择标的穿透全息分时走势",
+                options=stock_options,
+                label_visibility="collapsed",
+                key="sel_stock_tab1"
+            )
+        with c_pick_btn:
+            if st.button("📈 弹出当日分时走势", use_container_width=True, type="primary"):
+                if selected_stock_str:
+                    c_code = selected_stock_str.split(" - ")[0].strip()
+                    c_name = selected_stock_str.split(" - ")[1].split(" ")[0].strip()
+                    show_stock_intraday_modal(c_code, c_name)
+
+        df_event = st.dataframe(
             show_df,
             hide_index=True,
             use_container_width=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="sentinel_tab1_table",
             column_config={
                 "entry_date": st.column_config.TextColumn("📅 建仓日期"),
                 "strategy": st.column_config.TextColumn("🎯 入选战法"),
@@ -296,6 +448,13 @@ with tab_forward:
                 "chip_evolution": st.column_config.TextColumn("🔒 筹码演化"),
             }
         )
+
+        # 若用户在表格中直接点击选中某一行，自动弹出该标的分时图
+        if df_event and hasattr(df_event, "selection") and df_event.selection and df_event.selection.rows:
+            sel_idx = df_event.selection.rows[0]
+            if sel_idx < len(show_df):
+                sel_row = show_df.iloc[sel_idx]
+                show_stock_intraday_modal(str(sel_row["code"]), str(sel_row["name"]))
     else:
         st.info("AI 哨兵前向账本暂无记录，可点击右上角【🌱 导入今日双创标的】或由凌晨流水线自动建仓入库。")
 
@@ -443,8 +602,17 @@ with tab_forward:
 # Tab 2：超短情绪雷达与异动前哨（Layer 8 打板连板融合体系）
 # ══════════════════════════════════════════════
 with tab_sentiment:
-    st.markdown("### ⚡ 全市场超短情绪温度计 & 题材催化前哨")
-    st.caption("🛡️ **无缝融合开源 Layer 8 军械库**：实时感知全市场涨停板封板质量、连板高度梯队、炸板率、题材归因与财联社电报，为前向战法提供宏观风控与超短流动性指引。")
+    c_st_title, c_st_act = st.columns([7.0, 3.0])
+    with c_st_title:
+        st.markdown("### ⚡ 全市场超短情绪温度计 & 题材催化前哨")
+        st.caption("🛡️ **无缝融合开源 Layer 8 军械库**：实时感知全市场涨停板封板质量、连板高度梯队、炸板率、题材归因与财联社电报，为前向战法提供宏观风控与超短流动性指引。")
+    with c_st_act:
+        import datetime
+        now_time_str = datetime.datetime.now().strftime("%H:%M:%S")
+        if st.button("🔄 立即刷新超短雷达", help="直连交易所涨停板与财联社流，毫秒级获取最新实时打板数据", use_container_width=True, type="primary"):
+            st.toast("✅ 情绪雷达与即时快讯已刷新！")
+            st.rerun()
+        st.caption(f"<div style='text-align:right; font-size:11px; color:#94A3B8;'>⏱️ 盘中数据时间: {now_time_str}</div>", unsafe_allow_html=True)
 
     from core.sentiment_radar import calculate_sentiment_summary, fetch_cls_telegraph, fetch_stock_monitors
 
@@ -476,10 +644,26 @@ with tab_sentiment:
         zt_list = sm.get("zt_samples", [])
         if zt_list:
             zt_df = pd.DataFrame(zt_list)[["code", "name", "price", "pct", "limit_days", "first_seal", "industry"]]
-            st.dataframe(
+            
+            # 便捷弹窗选择器
+            c_zt_sel_box, c_zt_sel_btn = st.columns([7, 3])
+            with c_zt_sel_box:
+                zt_options = [f"{r['code']} - {r['name']} ({r['limit_days']}板, {r['industry']})" for _, r in zt_df.iterrows()]
+                sel_zt_str = st.selectbox("选择涨停标的查看分时走势", options=zt_options, label_visibility="collapsed", key="sel_zt_opt")
+            with c_zt_sel_btn:
+                if st.button("📈 弹出涨停分时", use_container_width=True):
+                    if sel_zt_str:
+                        zt_c = sel_zt_str.split(" - ")[0].strip()
+                        zt_n = sel_zt_str.split(" - ")[1].split(" ")[0].strip()
+                        show_stock_intraday_modal(zt_c, zt_n)
+
+            zt_event = st.dataframe(
                 zt_df,
                 hide_index=True,
                 use_container_width=True,
+                on_select="rerun",
+                selection_mode="single-row",
+                key="zt_table_interactive",
                 column_config={
                     "code": st.column_config.TextColumn("代码"),
                     "name": st.column_config.TextColumn("名称"),
@@ -490,6 +674,13 @@ with tab_sentiment:
                     "industry": st.column_config.TextColumn("所属行业")
                 }
             )
+
+            # 点击表格任意行直接弹出全息分时图
+            if zt_event and hasattr(zt_event, "selection") and zt_event.selection and zt_event.selection.rows:
+                sel_zt_idx = zt_event.selection.rows[0]
+                if sel_zt_idx < len(zt_df):
+                    sel_zt_row = zt_df.iloc[sel_zt_idx]
+                    show_stock_intraday_modal(str(sel_zt_row["code"]), str(sel_zt_row["name"]))
         else:
             st.info("当前暂无涨停池数据或非交易时段。")
 

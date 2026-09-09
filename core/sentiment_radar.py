@@ -227,3 +227,96 @@ def fetch_stock_monitors() -> List[Dict[str, Any]]:
         return out
     except Exception:
         return []
+
+
+def fetch_intraday_minute_chart(code: str) -> Dict[str, Any]:
+    """
+    拉取个股当日毫秒级分时全量走势 (腾讯行情接口)
+    返回:
+    {
+        "code": "000523",
+        "name": "红棉股份",
+        "prev_close": 3.96,
+        "latest_price": 4.36,
+        "pct_chg": 10.10,
+        "high": 4.36,
+        "low": 4.36,
+        "volume": 123456,
+        "amount": 5432100.0,
+        "times": ["09:30", "09:31", ...],
+        "prices": [4.36, 4.36, ...],
+        "volumes": [1000, 2000, ...],
+        "vwap": [4.36, 4.36, ...]
+    }
+    """
+    code_clean = str(code).zfill(6)
+    prefix = "sh" if code_clean.startswith(("6", "9")) else "sz"
+    symbol = f"{prefix}{code_clean}"
+    url = f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={symbol}"
+    
+    headers = {"User-Agent": UA, "Referer": "https://finance.qq.com/"}
+    try:
+        r = requests.get(url, headers=headers, timeout=6)
+        data = r.json()
+        raw_stock = data.get("data", {}).get(symbol, {})
+        minute_rows = raw_stock.get("data", {}).get("data") or []
+        qt = raw_stock.get("qt", {}).get(symbol, [])
+        
+        name = qt[1] if len(qt) > 1 else f"标的{code_clean}"
+        latest_p = float(qt[3]) if len(qt) > 3 and qt[3] else 0.0
+        prev_c = float(qt[4]) if len(qt) > 4 and qt[4] else latest_p
+        high_p = float(qt[33]) if len(qt) > 33 and qt[33] else latest_p
+        low_p = float(qt[34]) if len(qt) > 34 and qt[34] else latest_p
+        total_vol = float(qt[36]) if len(qt) > 36 and qt[36] else 0.0
+        total_amt = float(qt[37]) if len(qt) > 37 and qt[37] else 0.0
+        pct_chg = round((latest_p - prev_c) / prev_c * 100.0, 2) if prev_c > 0 else 0.0
+
+        times = []
+        prices = []
+        volumes = []
+        amounts = []
+        vwap = []
+
+        cum_amt = 0.0
+        cum_vol = 0.0
+        for item in minute_rows:
+            # 格式: '0930 4.36 100893 43989348.00' (时间, 现价, 累计/当分量, 累计/当分金额)
+            parts = item.split(" ")
+            if len(parts) >= 2:
+                t_raw = parts[0]
+                t_fmt = f"{t_raw[:2]}:{t_raw[2:]}"
+                p = float(parts[1])
+                v = float(parts[2]) if len(parts) > 2 else 0.0
+                a = float(parts[3]) if len(parts) > 3 else 0.0
+                
+                times.append(t_fmt)
+                prices.append(p)
+                volumes.append(v)
+                amounts.append(a)
+                
+                # 均线计算
+                if a > cum_amt and v > cum_vol:
+                    cum_amt = a
+                    cum_vol = v
+                    vwap.append(round(cum_amt / (cum_vol * 100.0), 2) if cum_vol > 0 else p)
+                else:
+                    vwap.append(vwap[-1] if vwap else p)
+
+        return {
+            "code": code_clean,
+            "name": name,
+            "prev_close": prev_c,
+            "latest_price": latest_p,
+            "pct_chg": pct_chg,
+            "high": high_p,
+            "low": low_p,
+            "volume": total_vol,
+            "amount": total_amt,
+            "times": times,
+            "prices": prices,
+            "volumes": volumes,
+            "vwap": vwap
+        }
+    except Exception as e:
+        return {"code": code_clean, "name": f"标的{code_clean}", "error": str(e)}
+
